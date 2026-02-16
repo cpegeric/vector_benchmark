@@ -4,9 +4,9 @@
   "user": "root",
   "password": "111",
   "database": "mydb",
-  "table": "mytbl",
+  "table": "hnsw",
   "index": {
-    "name": "myidx",
+    "name": "hnswidx",
     "type": "hnsw",
     "m": 100,
     "ef_construction": 400,
@@ -17,7 +17,6 @@
   "dataset_size": 10000,
   "batch_size": 1000,
   "env": {
-    "experimental_hnsw_index": 1,
-    "probe_limit": 3
+    "experimental_hnsw_index": 1
   }
 }

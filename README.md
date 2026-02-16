@@ -137,3 +137,17 @@ python3 dml.py mix -f cfg.json -n 5000 -r 1,8,1 -b 500
 - `dml.py`: Combined Insert/Update/Delete/Mix/Append benchmark tool.
 - `db.py`: Shared database connection and session environment logic.
 - `cfg.json`: Centralized configuration.
+
+## Testing
+
+Comprehensive test scripts are provided to verify the entire pipeline:
+
+```bash
+# Run the automated test suite using IVFflat configuration
+./test_ivfflat.sh
+
+# Run the automated test suite using HNSW configuration
+./test_hnsw.sh
+```
+
+This script performs data generation, table setup, recall benchmarking (all modes), and various DML operations.

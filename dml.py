@@ -1,7 +1,8 @@
-""
+"""
 Data Manipulation Benchmark (DML)
 
-This script consolidates Insert, Update, Delete, and Mixed workload benchmarks. It allows performing specific DML operations or a weighted mixture of them using subcommands.
+This script consolidates Insert, Update, Delete, and Mixed workload benchmarks.
+It allows performing specific DML operations or a weighted mixture of them using subcommands.
 
 Subcommands:
 - **insert**: Appends new vectors to the table.
@@ -16,7 +17,7 @@ Usage:
     python3 dml.py delete -f cfg.json -n 100
     python3 dml.py append -f cfg.json -i dataset.csv
     python3 dml.py mix -f cfg.json -n 5000 -r 1,8,1
-"
+"""
 import sys
 import json
 import argparse
@@ -254,10 +255,9 @@ def run_mix(config, total_ops, ratios, batch_size=1000, seed=8888):
                     elapsed = time.time() - start_time
                     print(f"Executed {total_executed}/{total_ops} ops (Time: {elapsed:.2f}s)...")
 
-            end_time = time.time()
-            duration = end_time - start_time
+            end_time = time.time() - start_time
             print("-" * 40)
-            print(f"Mixed workload completed. QPS: {total_executed / duration:.2f}")
+            print(f"Mixed workload completed. QPS: {total_executed / end_time:.2f}")
             print("-" * 40)
     finally:
         conn.close()
@@ -266,25 +266,31 @@ def main():
     parser = argparse.ArgumentParser(description="Run DML workloads")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # Common arguments helper
     def add_common(p):
         p.add_argument("-f", "--config", required=True, help="Path to config file")
         p.add_argument("-n", "--number", type=int, default=1000, help="Number of operations")
         p.add_argument("-b", "--batch_size", type=int, default=1000, help="Batch size")
         p.add_argument("-s", "--seed", type=int, default=8888, help="Random seed")
 
+    # Insert
     p_insert = subparsers.add_parser("insert")
     add_common(p_insert)
 
+    # Update
     p_update = subparsers.add_parser("update")
     add_common(p_update)
 
+    # Delete
     p_delete = subparsers.add_parser("delete")
     add_common(p_delete)
 
+    # Append
     p_append = subparsers.add_parser("append")
     p_append.add_argument("-f", "--config", required=True, help="Path to config file")
     p_append.add_argument("-i", "--input", required=True, help="Input CSV file")
 
+    # Mix
     p_mix = subparsers.add_parser("mix")
     add_common(p_mix)
     p_mix.add_argument("-r", "--ratios", default="1,8,1", help="Mix ratios (Insert,Update,Delete)")
