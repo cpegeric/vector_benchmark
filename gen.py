@@ -82,12 +82,12 @@ class Generator:
             batch_data.append(row)
         return batch_data
 
-def generate_csv(config, output_file, seed=DEFAULT_SEED):
+def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0):
     gen = Generator(config, seed=seed)
     batch_size = config.get('batch_size', 1000)
     total_size = config['dataset_size']
     
-    print(f"Generating {total_size} rows to {output_file} with seed {seed}...")
+    print(f"Generating {total_size} rows to {output_file} with seed {seed} starting from ID {start_id}...")
     
     with open(output_file, 'w', newline='') as csvfile:
         fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
@@ -97,7 +97,7 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED):
         count = 0
         while count < total_size:
             current_batch = min(batch_size, total_size - count)
-            data = gen.gen_batch(current_batch, count)
+            data = gen.gen_batch(current_batch, start_id + count)
             writer.writerows(data)
             count += current_batch
             if count % 10000 == 0:
@@ -110,6 +110,7 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--config", required=True, help="Path to configuration file")
     parser.add_argument("-o", "--output", help="Output CSV file path")
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="Random seed")
+    parser.add_argument("--start-id", type=int, default=0, help="Starting ID for the dataset")
     
     args = parser.parse_args()
     
@@ -121,11 +122,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.output:
-        generate_csv(config, args.output, args.seed)
+        generate_csv(config, args.output, args.seed, args.start_id)
     else:
         # If no output file, just print a sample batch
         gen = Generator(config, seed=args.seed)
-        batch = gen.gen_batch(5, 0)
-        print(f"Sample batch (5 rows) with seed {args.seed}:")
+        batch = gen.gen_batch(5, args.start_id)
+        print(f"Sample batch (5 rows) with seed {args.seed} and start-id {args.start_id}:")
         for row in batch:
             print(row)

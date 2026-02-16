@@ -62,6 +62,9 @@ Generate a reproducible dataset into a CSV file for offline loading.
 ```bash
 # Generate 10k rows (based on cfg.json) to dataset.csv with seed 8888
 python3 gen.py -f cfg.json -o dataset.csv -s 8888
+
+# Generate extra data starting from a specific ID to avoid duplicates
+python3 gen.py -f cfg.json -o extra_data.csv --start-id 10001
 ```
 
 ### 2. Setup Database and Index (`create.py`)
