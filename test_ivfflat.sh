@@ -7,7 +7,7 @@ EXTRA_CSV="data/extra_data.csv"
 
 echo "=== Step 1: Data Generation ==="
 python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
-python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 10001
+python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 1000001
 
 echo "=== Step 2: Setup Table and IVFflat Index ==="
 python3 create.py -f $CONFIG -i $CSV_FILE
@@ -19,6 +19,8 @@ echo "--- Pre-filtering Mode ---"
 python3 recall.py -f $CONFIG -m prefilter -n 100 -t 4 --i32v 500 -s 1234
 echo "--- Post-filtering Mode ---"
 python3 recall.py -f $CONFIG -m post -n 100 -t 4 --i32v 500 -s 1234
+echo "--- CSV Input Mode ---"
+python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $CSV_FILE --start-id 0
 
 echo "=== Step 4: DML Operations ==="
 echo "--- Append ---"

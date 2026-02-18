@@ -30,6 +30,8 @@ import argparse
 import pymysql
 import time
 import numpy as np
+import csv
+import ast
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from gen import Generator
 from db import get_db_connection, set_env
@@ -117,18 +119,31 @@ def search_worker(config, mode, dataset, start, end, filters=None):
     end_time = time.time()
     return correct, eligible, total, end_time - start_time
 
-def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None):
+def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None, csv_file=None, start_id=0):
     total_size = number if number is not None else config['dataset_size']
     # Use a large chunk size to minimize connection overhead per batch
     # But ensuring it's not too huge for memory
     chunk_size = 10000 
     
-    print(f"Starting recall test: {total_size} queries, mode={mode}, threads={threads}, seed={seed}")
+    print(f"Starting recall test: queries={total_size}, mode={mode}, threads={threads}, seed={seed}, start_id={start_id}")
     if filters:
         print(f"Filters: {filters}")
+    if csv_file:
+        print(f"Reading from CSV: {csv_file}")
+        
     print(f"Processing in chunks of {chunk_size}...")
 
-    gen = Generator(config, seed=seed)
+    gen = None
+    if not csv_file:
+        gen = Generator(config, seed=seed)
+        if start_id > 0:
+            print(f"Fast-forwarding generator to ID {start_id}...")
+            # Advance the generator state
+            left = start_id
+            while left > 0:
+                step = min(10000, left)
+                gen.gen_batch(step, 0)
+                left -= step
     
     total_correct = 0
     total_eligible = 0
@@ -136,48 +151,95 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None)
     total_search_wall_time = 0
     total_worker_cpu_time = 0
     
-    processed = 0
-    while processed < total_size:
-        current_batch_size = min(chunk_size, total_size - processed)
-        
-        # 1. Generate Data (Time ignored)
-        dataset = gen.gen_batch(current_batch_size, processed)
-        
-        # 2. Prepare Search (Time ignored)
-        items_per_thread = len(dataset) // threads
-        remainder = len(dataset) % threads
-        
-        start_idx = 0
-        search_args = []
-        for i in range(threads):
-            count = items_per_thread + (1 if i < remainder else 0)
-            if count > 0:
-                sub_data = dataset[start_idx : start_idx + count]
-                # Pass filters to worker
-                search_args.append((config, mode, sub_data, 0, len(sub_data), filters))
-                start_idx += count
-        
-        # 3. Execute Search (Time Measured)
-        batch_start_time = time.time()
-        
-        with ThreadPoolExecutor(max_workers=threads) as executor:
-            futures = [executor.submit(search_worker, *args) for args in search_args]
+    processed_count = 0
+    current_id = start_id
+    
+    csv_f = None
+    csv_reader = None
+    if csv_file:
+        csv_f = open(csv_file, 'r')
+        csv_reader = csv.DictReader(csv_f)
+
+    try:
+        while processed_count < total_size:
+            current_batch_size = min(chunk_size, total_size - processed_count)
             
-            for f in as_completed(futures):
-                c, e, t, elapsed = f.result()
-                total_correct += c
-                total_eligible += e
-                total_queries += t
-                total_worker_cpu_time += elapsed
+            # 1. Get Data
+            dataset = []
+            if csv_file:
+                while len(dataset) < current_batch_size:
+                    try:
+                        row = next(csv_reader)
+                        # Skip if ID is less than start_id
+                        if int(row['id']) < start_id:
+                            continue
+                            
+                        # Parse vector
+                        try:
+                            # Attempt JSON parse first (faster)
+                            row['vector'] = json.loads(row['vector'])
+                        except:
+                            # Fallback to ast.literal_eval
+                            row['vector'] = ast.literal_eval(row['vector'])
+                            
+                        # Convert types
+                        row['id'] = int(row['id'])
+                        if 'i32v' in row: row['i32v'] = int(row['i32v'])
+                        if 'f32v' in row: row['f32v'] = float(row['f32v'])
+                        
+                        dataset.append(row)
+                    except StopIteration:
+                        break
+                if not dataset:
+                    break
+            else:
+                dataset = gen.gen_batch(current_batch_size, current_id)
+            
+            if not dataset:
+                break
+
+            # 2. Prepare Search (Time ignored)
+            items_per_thread = len(dataset) // threads
+            remainder = len(dataset) % threads
+            
+            start_idx = 0
+            search_args = []
+            for i in range(threads):
+                count = items_per_thread + (1 if i < remainder else 0)
+                if count > 0:
+                    sub_data = dataset[start_idx : start_idx + count]
+                    # Pass filters to worker
+                    search_args.append((config, mode, sub_data, 0, len(sub_data), filters))
+                    start_idx += count
+            
+            # 3. Execute Search (Time Measured)
+            batch_start_time = time.time()
+            
+            with ThreadPoolExecutor(max_workers=threads) as executor:
+                futures = [executor.submit(search_worker, *args) for args in search_args]
                 
-        batch_end_time = time.time()
-        
-        # Accumulate the wall time spent in this batch's search phase
-        total_search_wall_time += (batch_end_time - batch_start_time)
-        
-        processed += current_batch_size
-        if processed % 10000 == 0 or processed == total_size:
-            print(f"Processed {processed}/{total_size} queries...")
+                for f in as_completed(futures):
+                    c, e, t, elapsed = f.result()
+                    total_correct += c
+                    total_eligible += e
+                    total_queries += t
+                    total_worker_cpu_time += elapsed
+                    
+            batch_end_time = time.time()
+            
+            # Accumulate the wall time spent in this batch's search phase
+            total_search_wall_time += (batch_end_time - batch_start_time)
+            
+            batch_len = len(dataset)
+            processed_count += batch_len
+            current_id += batch_len
+            
+            if processed_count % 10000 == 0 or processed_count == total_size:
+                print(f"Processed {processed_count}/{total_size} queries...")
+
+    finally:
+        if csv_f:
+            csv_f.close()
 
     # Calculate Stats
     qps = total_queries / total_search_wall_time if total_search_wall_time > 0 else 0
@@ -205,6 +267,8 @@ def main():
     parser.add_argument("-t", "--threads", type=int, default=4, help="Number of threads")
     parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed")
     parser.add_argument("-n", "--number", type=int, help="Number of vectors to search")
+    parser.add_argument("-i", "--input", type=str, help="Input CSV file")
+    parser.add_argument("--start-id", type=int, default=0, help="Start ID for testing")
     
     # Filter options
     parser.add_argument("--i32v", type=int, help="Filter by i32v value")
@@ -222,7 +286,7 @@ def main():
     if args.f32v is not None: filters['f32v'] = args.f32v
     if args.str is not None: filters['str'] = args.str
         
-    run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters)
+    run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_file=args.input, start_id=args.start_id)
 
 if __name__ == "__main__":
     main()
