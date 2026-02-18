@@ -25,6 +25,8 @@ python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $CSV_FILE --start-id 0
 echo "=== Step 4: DML Operations ==="
 echo "--- Append ---"
 python3 dml.py append -f $CONFIG -i $EXTRA_CSV
+echo "--- Extra CSV Input Mode ---"
+python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $EXTRA_CSV
 echo "--- Insert ---"
 python3 dml.py insert -f $CONFIG -n 500
 echo "--- Update ---"

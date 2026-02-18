@@ -11,6 +11,11 @@ python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 10001
 
 echo "=== Step 2: Setup Table and HNSW Index ==="
 python3 create.py -f $CONFIG -i $CSV_FILE
+echo "--- Append ---"
+python3 dml.py append -f $CONFIG -i $EXTRA_CSV
+
+# HNSW is async so sleep to make sure index updated before recall
+sleep 30
 
 echo "=== Step 3: Recall Tests ==="
 echo "--- Normal Mode ---"
@@ -21,10 +26,10 @@ echo "--- Post-filtering Mode ---"
 python3 recall.py -f $CONFIG -m post -n 100 -t 4 --i32v 500 -s 1234
 echo "--- CSV Input Mode ---"
 python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $CSV_FILE --start-id 0
+echo "--- Extra CSV Input Mode ---"
+python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $EXTRA_CSV
 
 echo "=== Step 4: DML Operations ==="
-echo "--- Append ---"
-python3 dml.py append -f $CONFIG -i $EXTRA_CSV
 echo "--- Insert ---"
 python3 dml.py insert -f $CONFIG -n 500
 echo "--- Update ---"
