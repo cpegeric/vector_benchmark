@@ -33,7 +33,7 @@ import numpy as np
 import csv
 import ast
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from gen import Generator
+from gen import Generator, AsyncGenerator
 from db import get_db_connection, set_env
 
 optype2distfn = {
@@ -134,6 +134,7 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
     print(f"Processing in chunks of {chunk_size}...")
 
     gen = None
+    agen = None
     if not csv_file:
         gen = Generator(config, seed=seed)
         if start_id > 0:
@@ -144,6 +145,8 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
                 step = min(10000, left)
                 gen.gen_batch(step, 0)
                 left -= step
+        
+        agen = AsyncGenerator(gen, start_id=start_id, chunk_size=chunk_size)
     
     total_correct = 0
     total_eligible = 0
@@ -193,7 +196,8 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
                 if not dataset:
                     break
             else:
-                dataset = gen.gen_batch(current_batch_size, current_id)
+                # Use AsyncGenerator to get batch
+                dataset = agen.get_batch(current_batch_size)
             
             if not dataset:
                 break
@@ -240,6 +244,8 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
     finally:
         if csv_f:
             csv_f.close()
+        if agen:
+            agen.close()
 
     # Calculate Stats
     qps = total_queries / total_search_wall_time if total_search_wall_time > 0 else 0

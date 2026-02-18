@@ -27,6 +27,8 @@ import math
 import csv
 import string
 import random
+import threading
+import queue
 
 # Seed for reproducibility
 DEFAULT_SEED = 8888
@@ -81,6 +83,70 @@ class Generator:
             }
             batch_data.append(row)
         return batch_data
+
+class AsyncGenerator:
+    def __init__(self, generator, start_id=0, chunk_size=10000, buffer_size=4):
+        self.generator = generator
+        self.chunk_size = chunk_size
+        self.current_id = start_id
+        self.queue = queue.Queue(maxsize=buffer_size)
+        self.stop_event = threading.Event()
+        
+        self.buffer = []
+        self.buffer_pos = 0
+        
+        self.thread = threading.Thread(target=self._producer_loop, daemon=True)
+        self.thread.start()
+        
+    def _producer_loop(self):
+        while not self.stop_event.is_set():
+            try:
+                # Don't produce if queue is full (put blocks, but we check stop_event occasionally)
+                # Actually queue.put blocks, so that's fine, but if we want to exit cleanly
+                # we might want a timeout.
+                data = self.generator.gen_batch(self.chunk_size, self.current_id)
+                self.current_id += self.chunk_size
+                
+                # Put with timeout to allow checking stop_event
+                while not self.stop_event.is_set():
+                    try:
+                        self.queue.put(data, timeout=1)
+                        break
+                    except queue.Full:
+                        continue
+            except Exception as e:
+                print(f"Async generation error: {e}")
+                break
+
+    def get_batch(self, size):
+        result = []
+        needed = size
+        
+        while needed > 0:
+            # Refill local buffer from queue if empty
+            if self.buffer_pos >= len(self.buffer):
+                self.buffer = self.queue.get()
+                self.buffer_pos = 0
+            
+            # Take from local buffer
+            available = len(self.buffer) - self.buffer_pos
+            take = min(needed, available)
+            
+            result.extend(self.buffer[self.buffer_pos : self.buffer_pos + take])
+            self.buffer_pos += take
+            needed -= take
+            
+        return result
+
+    def close(self):
+        self.stop_event.set()
+        # Drain queue
+        while not self.queue.empty():
+            try:
+                self.queue.get_nowait()
+            except queue.Empty:
+                break
+
 
 def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0):
     gen = Generator(config, seed=seed)
