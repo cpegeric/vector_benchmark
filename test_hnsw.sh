@@ -5,12 +5,53 @@ CONFIG="cfg/hnsw.json"
 CSV_FILE="data/test_data_hnsw.csv.gz"
 EXTRA_CSV="data/extra_data_hnsw.csv.gz"
 
-echo "=== Step 1: Data Generation ==="
-python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
-python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 10001
+# --- Parse Options ---
+SKIP_CREATE=false
+while getopts ":-:" opt; do
+  case ${opt} in
+    -)
+      case "${OPTARG}" in
+        skip-create)
+          SKIP_CREATE=true
+          echo "Option --skip-create enabled: Skipping data generation and table creation."
+          ;;
+        *)
+          if [ "$OPTERR" = 1 ]; then
+            echo "Unknown option --${OPTARG}" >&2
+            exit 1
+          fi
+          ;;
+      esac
+      ;;
+    \?)
+      echo "Invalid Option: -$OPTARG" 1>&2
+      exit 1
+      ;;
+    :)
+      echo "Invalid Option: -$OPTARG requires an argument" 1>&2
+      exit 1
+      ;;
+  esac
+done
+shift "$((OPTIND-1))" # Remove options from the positional parameters
 
-echo "=== Step 2: Setup Table and HNSW Index ==="
-python3 create.py -f $CONFIG -i $CSV_FILE -i $EXTRA_CSV
+# --- Conditional Steps ---
+if [ "$SKIP_CREATE" = true ]; then
+    echo "Checking for existing data files..."
+    if [ ! -f "$CSV_FILE" ] || [ ! -f "$EXTRA_CSV" ]; then
+        echo "Error: --skip-create specified, but required data files are missing."
+        echo "Please ensure '$CSV_FILE' and '$EXTRA_CSV' exist or run without --skip-create first."
+        exit 1
+    fi
+    echo "Data files found."
+else
+    echo "=== Step 1: Data Generation ==="
+    python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
+    python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 10001
+
+    echo "=== Step 2: Setup Table and HNSW Index ==="
+    python3 create.py -f $CONFIG -i $CSV_FILE -i $EXTRA_CSV
+fi
 
 # HNSW is async so sleep to make sure index updated before recall
 #echo "--- Append ---"

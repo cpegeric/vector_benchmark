@@ -7,20 +7,40 @@ EXTRA_CSV="data/extra_data.csv"
 
 # --- Parse Options ---
 SKIP_CREATE=false
-for arg in "$@"; do
-  if [ "$arg" == "--skip-create" ]; then
-    SKIP_CREATE=true
-    echo "Option -skip-create enabled: Skipping data generation and table creation."
-    break
-  fi
+while getopts ":-:" opt; do
+  case ${opt} in
+    -)
+      case "${OPTARG}" in
+        skip-create)
+          SKIP_CREATE=true
+          echo "Option --skip-create enabled: Skipping data generation and table creation."
+          ;;
+        *)
+          if [ "$OPTERR" = 1 ]; then
+            echo "Unknown option --${OPTARG}" >&2
+            exit 1
+          fi
+          ;;
+      esac
+      ;;
+    \?)
+      echo "Invalid Option: -$OPTARG" 1>&2
+      exit 1
+      ;;
+    :)
+      echo "Invalid Option: -$OPTARG requires an argument" 1>&2
+      exit 1
+      ;;
+  esac
 done
+shift "$((OPTIND-1))" # Remove options from the positional parameters
 
 # --- Conditional Steps ---
 if [ "$SKIP_CREATE" = true ]; then
     echo "Checking for existing data files..."
     if [ ! -f "$CSV_FILE" ] || [ ! -f "$EXTRA_CSV" ]; then
-        echo "Error: -skip-create specified, but required data files are missing."
-        echo "Please ensure '$CSV_FILE' and '$EXTRA_CSV' exist or run without -skip-create first."
+        echo "Error: --skip-create specified, but required data files are missing."
+        echo "Please ensure '$CSV_FILE' and '$EXTRA_CSV' exist or run without --skip-create first."
         exit 1
     fi
     echo "Data files found."
