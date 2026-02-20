@@ -113,7 +113,7 @@ def create_index(cursor, config, async_mode=False):
     end = time.time()
     print(f"Create index finished in {end - start:.4f} seconds")
 
-def insert_data(cursor, config, csv_file=None, seed=8888):
+def insert_data(cursor, config, csv_files=None, seed=8888):
     tbl = config['table']
     batch_size = config.get('batch_size', 1000)
     total_size = config['dataset_size']
@@ -121,27 +121,27 @@ def insert_data(cursor, config, csv_file=None, seed=8888):
     print(f"Inserting data into {tbl} (seed: {seed})...")
     start_time = time.time()
     
-    if csv_file:
-        abs_path = os.path.abspath(csv_file)
-        print(f"Loading data from CSV file: {abs_path}...")
-        
-        # Use LOAD DATA INFILE for faster loading
-        # The CSV format from gen.py corresponds to the table structure
-        # We assume standard CSV format with \r\n line terminators (Python default)
-        sql = f"""
-        LOAD DATA INFILE '{abs_path}' 
-        INTO TABLE {tbl} 
-        FIELDS TERMINATED BY ',' 
-        ENCLOSED BY '"' 
-        LINES TERMINATED BY '\\r\\n' 
-        IGNORE 1 LINES
-        """
-        
-        print(f"Executing: {sql}")
-        cursor.execute(sql)
-        
-        # We don't have exact row count from LOAD DATA result easily in pymysql without parsing
-        # but the operation is done. 
+    if csv_files:
+        for csv_file in csv_files:
+            abs_path = os.path.abspath(csv_file)
+            print(f"Loading data from CSV file: {abs_path}...")
+            
+            # Use LOAD DATA INFILE for faster loading
+            # The CSV format from gen.py corresponds to the table structure
+            # We assume standard CSV format with \r\n line terminators (Python default)
+            sql = f"""
+            LOAD DATA INFILE '{abs_path}' 
+            INTO TABLE {tbl} 
+            FIELDS TERMINATED BY ',' 
+            ENCLOSED BY '"' 
+            LINES TERMINATED BY '\\r\\n' 
+            IGNORE 1 LINES
+            """
+            
+            print(f"Executing: {sql}")
+            cursor.execute(sql)
+            # We don't have exact row count from LOAD DATA result easily in pymysql without parsing
+            # but the operation is done. 
         
     else:
         # Stream generation
@@ -165,8 +165,8 @@ def insert_data(cursor, config, csv_file=None, seed=8888):
 def main():
     parser = argparse.ArgumentParser(description="Create table and index")
     parser.add_argument("-f", "--config", required=True, help="Path to config file")
-    parser.add_argument("-i", "--input", help="Input CSV file (optional)")
-    parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed")
+    parser.add_argument("-i", "--input", action="append", help="Input CSV file(s). Can be specified multiple times.")
+    parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed for stream generation")
     parser.add_argument("-a", "--async_mode", action="store_true", help="Asynchronous mode")
     
     args = parser.parse_args()
@@ -199,11 +199,11 @@ def main():
                 # Async: Create Index -> Insert
                 print("Running in ASYNC mode")
                 create_index(cursor, config, async_mode=True)
-                insert_data(cursor, config, args.input, seed=args.seed)
+                insert_data(cursor, config, csv_files=args.input, seed=args.seed)
             else:
                 # Sync (Default): Insert -> Create Index
                 print("Running in SYNC mode (default)")
-                insert_data(cursor, config, args.input, seed=args.seed)
+                insert_data(cursor, config, csv_files=args.input, seed=args.seed)
                 create_index(cursor, config, async_mode=False)
                 
     except Exception as e:

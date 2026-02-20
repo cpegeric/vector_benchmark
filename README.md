@@ -5,6 +5,7 @@ A comprehensive benchmarking toolset for vector databases (optimized for MatrixO
 ## Features
 
 - **Reproducible Data**: Deterministic data generation using a base seed with independent random states for each column (`vector`, `i32v`, `f32v`, `str`).
+- **`.fvecs` Support**: Convert vector datasets from the standard `.fvecs` format into the benchmark's CSV format.
 - **Flexible Indexing**: Supports HNSW and IVFflat with configurable parameters via JSON.
 - **High-Performance Loading**: Uses `LOAD DATA INFILE` for rapid CSV ingestion.
 - **Advanced Search**: Benchmarks parallel search with support for pre-filtering (dynamic metadata conditions).
@@ -65,6 +66,9 @@ python3 gen.py -f cfg.json -o dataset.csv -s 8888
 
 # Generate extra data starting from a specific ID to avoid duplicates
 python3 gen.py -f cfg.json -o extra_data.csv --start-id 10001
+
+# Convert a .fvecs file to CSV, generating id and metadata columns
+python3 gen.py --fvecs /path/to/sift1m/sift_base.fvecs -o sift_base.csv
 ```
 
 ### 2. Setup Database and Index (`create.py`)
@@ -72,6 +76,9 @@ Initialize the database, table, and index.
 ```bash
 # Synchronous Mode (Insert -> Create Index) - Default
 python3 create.py -f cfg.json -i dataset.csv
+
+# Load multiple CSV files at once
+python3 create.py -f cfg.json -i dataset_part1.csv -i dataset_part2.csv
 
 # Asynchronous Mode (Create Index -> Insert)
 python3 create.py -f cfg.json -a -i dataset.csv

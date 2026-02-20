@@ -171,15 +171,90 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0):
                 
     print(f"Finished generating {total_size} rows.")
 
+def fvecs_read(filename, c_contiguous=True):
+    fv = np.fromfile(filename, dtype=np.float32)
+    if fv.size == 0:
+        return np.zeros((0, 0))
+    dim = fv.view(np.int32)[0]
+    assert dim > 0, "Dimension must be greater than 0"
+    fv = fv.reshape(-1, 1 + dim)
+    if not c_contiguous:
+        fv = fv.copy()
+    fv = fv[:, 1:]
+    return fv
+
+def convert_fvecs_to_csv(fvecs_path, output_file, seed=DEFAULT_SEED, start_id=0, batch_size=1000):
+    print(f"Reading vectors from {fvecs_path}...")
+    vectors = fvecs_read(fvecs_path)
+    total_size = len(vectors)
+    print(f"Found {total_size} vectors. Converting to CSV at {output_file}...")
+
+    # Initialize random states for other columns
+    rss = [
+        None,  # vector (already loaded)
+        np.random.RandomState(seed + 1),  # i32v
+        np.random.RandomState(seed + 2),  # f32v
+        np.random.RandomState(seed + 3)   # str
+    ]
+    str_choices = list(string.ascii_letters + string.digits)
+
+    with open(output_file, 'w', newline='') as csvfile:
+        fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for i in range(0, total_size, batch_size):
+            batch_end = min(i + batch_size, total_size)
+            batch_vectors = vectors[i:batch_end]
+            current_batch_size = len(batch_vectors)
+            
+            # Generate other columns for the batch
+            i32vs = rss[1].randint(0, 1000, current_batch_size, dtype=np.int32)
+            f32vs = rss[2].rand(current_batch_size).astype(np.float32)
+            
+            rows = []
+            for j in range(current_batch_size):
+                vec_str = '[' + ','.join(map(str, batch_vectors[j])) + ']'
+                s_len = rss[3].randint(5, 10)
+                s_val = ''.join(rss[3].choice(str_choices, s_len))
+                
+                rows.append({
+                    'id': start_id + i + j,
+                    'vector': vec_str,
+                    'i32v': int(i32vs[j]),
+                    'f32v': float(f32vs[j]),
+                    'str': s_val
+                })
+            
+            writer.writerows(rows)
+            if (i + current_batch_size) % 10000 == 0 or (i + current_batch_size) == total_size:
+                print(f"{i + current_batch_size} rows written...")
+                
+    print(f"Finished converting {total_size} vectors to CSV.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate vector dataset")
-    parser.add_argument("-f", "--config", required=True, help="Path to configuration file")
+    parser.add_argument("-f", "--config", help="Path to configuration file")
     parser.add_argument("-o", "--output", help="Output CSV file path")
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="Random seed")
     parser.add_argument("--start-id", type=int, default=0, help="Starting ID for the dataset")
+    parser.add_argument("--fvecs", help="Path to .fvecs file to convert to CSV")
     
     args = parser.parse_args()
     
+    if args.fvecs:
+        if not args.output:
+            print("Error: --output is required when using --fvecs")
+            sys.exit(1)
+        convert_fvecs_to_csv(args.fvecs, args.output, args.seed, args.start_id)
+        sys.exit(0)
+
+    # The rest of the script requires config
+    if not args.config:
+        print("Error: --config is required for data generation")
+        sys.exit(1)
+
     try:
         with open(args.config, 'r') as f:
             config = json.load(f)

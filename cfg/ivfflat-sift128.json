@@ -1,0 +1,21 @@
+{
+  "host": "localhost",
+  "port": 6001,
+  "user": "root",
+  "password": "111",
+  "database": "mydb",
+  "table": "ivfsift",
+  "index": {
+    "name": "ivfdx",
+    "type": "ivfflat",
+    "lists": 1000,
+    "op_type": "vector_l2_ops"
+  },
+  "dimension": 128,
+  "dataset_size": 1000000,
+  "batch_size": 1000,
+  "env": {
+    "probe_limit": 3,
+    "kmeans_train_percent": 10
+  }
+}
