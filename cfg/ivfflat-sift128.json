@@ -16,6 +16,8 @@
   "batch_size": 1000,
   "env": {
     "probe_limit": 3,
-    "kmeans_train_percent": 10
+    "kmeans_train_percent": 10,
+    "ivf_small_centroid_threshold": 1,
+    "ivf_preload_entries": 1
   }
 }

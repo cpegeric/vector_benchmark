@@ -267,7 +267,8 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
             
             if processed_count % 10000 == 0 or processed_count == total_size:
                 print(f"Processed {processed_count}/{total_size} queries...")
-
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received. Shutting down gracefully...")
     finally:
         if current_csv_f:
             current_csv_f.close()

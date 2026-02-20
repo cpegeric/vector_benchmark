@@ -19,6 +19,8 @@ echo "--- Pre-filtering Mode ---"
 python3 recall.py -f $CONFIG -m prefilter -n 100 -t 4 --i32v 500 -s 1234
 echo "--- Post-filtering Mode ---"
 python3 recall.py -f $CONFIG -m post -n 100 -t 4 --i32v 500 -s 1234
+echo "--- Force Mode ---"
+python3 recall.py -f $CONFIG -m force -n 100 -t 4 --i32v 500 -s 1234
 echo "--- CSV Input Mode ---"
 python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $CSV_FILE --start-id 0
 
