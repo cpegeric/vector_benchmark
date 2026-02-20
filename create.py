@@ -65,22 +65,13 @@ def create_index(cursor, config, async_mode=False):
     tbl = config['table']
     index_cfg = config.get('index', {})
     
-    # Support both old string format and new dict format for index
-    if isinstance(index_cfg, str):
-        idx_name = index_cfg
-        idx_type = config.get('index_type', 'hnsw')
-        dist = config.get('distance', 'vector_l2_ops')
-        # Default HNSW params
-        m, ef_c, ef_s = 100, 500, 200
-        lists = None
-    else:
-        idx_name = index_cfg.get('name', 'myidx')
-        idx_type = index_cfg.get('type', 'hnsw')
-        dist = index_cfg.get('op_type', config.get('distance', 'vector_l2_ops'))
-        m = index_cfg.get('m', 100)
-        ef_c = index_cfg.get('ef_construction', 400)
-        ef_s = index_cfg.get('ef_search', 200)
-        lists = index_cfg.get('lists')
+    idx_name = index_cfg.get('name', 'myidx')
+    idx_type = index_cfg.get('type', 'hnsw')
+    dist = index_cfg.get('op_type', config.get('distance', 'vector_l2_ops'))
+    m = index_cfg.get('m', 100)
+    ef_c = index_cfg.get('ef_construction', 400)
+    ef_s = index_cfg.get('ef_search', 200)
+    lists = index_cfg.get('lists')
     
     # Check if index type is valid
     if idx_type not in ['hnsw', 'ivfflat']:
