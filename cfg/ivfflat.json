@@ -8,14 +8,16 @@
   "index": {
     "name": "ivfdx",
     "type": "ivfflat",
-    "lists": 100,
+    "lists": 1000,
     "op_type": "vector_l2_ops"
   },
   "dimension": 1024,
-  "dataset_size": 10000,
+  "dataset_size": 1000000,
   "batch_size": 1000,
   "env": {
     "probe_limit": 3,
-    "kmeans_train_percent": 10
+    "kmeans_train_percent": 10,
+    "ivf_small_centroid_threshold": 10,
+    "ivf_preload_entries": 1
   }
 }

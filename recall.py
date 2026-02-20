@@ -94,7 +94,7 @@ def search_worker(config, mode, dataset, start, end, filters=None):
                 
                 if is_eligible:
                     eligible += 1
-
+                total += 1 # Total queries executed, including non-eligible ones if they pass filters
                 # Dynamic SQL generation
                 current_where = where_clause
                 
@@ -110,9 +110,9 @@ def search_worker(config, mode, dataset, start, end, filters=None):
                 cursor.execute(sql)
                 res = cursor.fetchone()
                 
-                if res and res[0] == target_id:
+                if res and res[0] == target_id and is_eligible:
                     correct += 1
-                total += 1
+                
                 
     finally:
         conn.close()

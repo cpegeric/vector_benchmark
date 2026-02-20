@@ -6,23 +6,23 @@ CSV_FILE="data/test_data.csv"
 EXTRA_CSV="data/extra_data.csv"
 
 echo "=== Step 1: Data Generation ==="
-python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
-python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 1000001
+#python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
+#python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 1000001 -n 10000
 
 echo "=== Step 2: Setup Table and IVFflat Index ==="
-python3 create.py -f $CONFIG -i $CSV_FILE
+#python3 create.py -f $CONFIG -i $CSV_FILE
 
 echo "=== Step 3: Recall Tests ==="
 echo "--- Normal Mode ---"
-python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -s 1234
+python3 recall.py -f $CONFIG -m normal -n 1000 -t 8 -s 1234
 echo "--- Pre Mode ---"
-python3 recall.py -f $CONFIG -m pre -n 100 -t 4 --i32v 500 -s 1234
+python3 recall.py -f $CONFIG -m pre -n 1000 -t 8 --i32v 50 -s 1234
 echo "--- Post-filtering Mode ---"
-python3 recall.py -f $CONFIG -m post -n 100 -t 4 --i32v 500 -s 1234
+python3 recall.py -f $CONFIG -m post -n 1000 -t 8 --i32v 50 -s 1234
 echo "--- Force Mode ---"
-python3 recall.py -f $CONFIG -m force -n 100 -t 4 --i32v 500 -s 1234
+python3 recall.py -f $CONFIG -m force -n 1000 -t 8 --i32v 50 -s 1234
 echo "--- CSV Input Mode ---"
-python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $CSV_FILE --start-id 0
+python3 recall.py -f $CONFIG -m normal -n 1000 -t 8 -i $CSV_FILE --start-id 0
 
 echo "=== Step 4: DML Operations ==="
 echo "--- Append ---"
