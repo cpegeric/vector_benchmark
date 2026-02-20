@@ -10,12 +10,12 @@ python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
 python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 10001
 
 echo "=== Step 2: Setup Table and HNSW Index ==="
-python3 create.py -f $CONFIG -i $CSV_FILE
-echo "--- Append ---"
-python3 dml.py append -f $CONFIG -i $EXTRA_CSV
+python3 create.py -f $CONFIG -i $CSV_FILE -i $EXTRA_CSV
 
 # HNSW is async so sleep to make sure index updated before recall
-sleep 30
+#echo "--- Append ---"
+#python3 dml.py append -f $CONFIG -i $EXTRA_CSV
+#sleep 30
 
 echo "=== Step 3: Recall Tests ==="
 echo "--- Normal Mode ---"
