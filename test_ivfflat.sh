@@ -6,8 +6,8 @@ CSV_FILE="data/test_data.csv"
 EXTRA_CSV="data/extra_data.csv"
 
 echo "=== Step 1: Data Generation ==="
-#python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
-#python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 1000001 -n 10000
+python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
+python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 1000001 -n 10000
 
 echo "=== Step 2: Setup Table and IVFflat Index ==="
 #python3 create.py -f $CONFIG -i $CSV_FILE
