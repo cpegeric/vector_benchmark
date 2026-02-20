@@ -97,7 +97,7 @@ Measure search performance. Data can be generated in blocks on-the-fly or read f
 python3 recall.py -f cfg.json -m normal -t 8
 
 # Pre-filtering Search (WHERE i32v < 100 AND strv = 'abc')
-python3 recall.py -f cfg.json -m prefilter -t 4 --i32v 100 --str "abc"
+python3 recall.py -f cfg.json -m pre -t 4 --i32v 100 --str "abc"
 
 # Specific number of queries (from generated data, starting from ID 1000)
 python3 recall.py -f cfg.json -n 500 --start-id 1000

@@ -22,7 +22,7 @@ Usage:
     python3 recall.py -f cfg.json -m normal -t 8
 
     # Pre-filtering
-    python3 recall.py -f cfg.json -m prefilter --i32v 100 --str "abc"
+    python3 recall.py -f cfg.json -m pre --i32v 100 --str "abc"
 """
 import sys
 import json
@@ -100,7 +100,7 @@ def search_worker(config, mode, dataset, start, end, filters=None):
                 
                 if mode == 'normal':
                     sql = f"SELECT id FROM {tbl} {current_where} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1"
-                elif mode == 'prefilter':
+                elif mode == 'pre':
                     sql = f"SELECT id FROM {tbl} {current_where} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1 BY RANK WITH OPTION 'mode=pre'"
                 elif mode == 'post':
                     sql = f"SELECT id FROM {tbl} {current_where} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1 BY RANK WITH OPTION 'mode=post'"
@@ -297,7 +297,7 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
 def main():
     parser = argparse.ArgumentParser(description="Run recall test")
     parser.add_argument("-f", "--config", required=True, help="Path to config file")
-    parser.add_argument("-m", "--mode", choices=['normal', 'prefilter', 'post', 'force'], default='normal', help="Search mode")
+    parser.add_argument("-m", "--mode", choices=['normal', 'pre', 'post', 'force'], default='normal', help="Search mode")
     parser.add_argument("-t", "--threads", type=int, default=4, help="Number of threads")
     parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed")
     parser.add_argument("-n", "--number", type=int, help="Number of vectors to search")

@@ -16,7 +16,7 @@ echo "=== Step 3: Recall Tests ==="
 echo "--- Normal Mode ---"
 python3 recall.py -f $CONFIG -m normal -n 1000000 -t 4 -i $CSV_FILE
 echo "--- Pre-filtering Mode ---"
-python3 recall.py -f $CONFIG -m prefilter -n 1000000 -t 4 --i32v 500 -i $CSV_FILE
+python3 recall.py -f $CONFIG -m pre -n 1000000 -t 4 --i32v 500 -i $CSV_FILE
 echo "--- Post-filtering Mode ---"
 python3 recall.py -f $CONFIG -m post -n 1000000 -t 4 --i32v 500 -i $CSV_FILE
 echo "--- Force Mode ---"

@@ -20,8 +20,8 @@ python3 create.py -f $CONFIG -i $CSV_FILE -i $EXTRA_CSV
 echo "=== Step 3: Recall Tests ==="
 echo "--- Normal Mode ---"
 python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -s 1234
-echo "--- Pre-filtering Mode ---"
-python3 recall.py -f $CONFIG -m prefilter -n 100 -t 4 --i32v 500 -s 1234
+echo "--- Pre Mode ---"
+python3 recall.py -f $CONFIG -m pre -n 100 -t 4 --i32v 500 -s 1234
 echo "--- Post-filtering Mode ---"
 python3 recall.py -f $CONFIG -m post -n 100 -t 4 --i32v 500 -s 1234
 echo "--- CSV Input Mode ---"
