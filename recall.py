@@ -32,6 +32,7 @@ import time
 import numpy as np
 import csv
 import ast
+import gzip
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from gen import Generator, AsyncGenerator
 from db import get_db_connection, set_env
@@ -177,7 +178,10 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
                 try:
                     # Open next file
                     next_file_path = next(csv_files_iterator)
-                    current_csv_f = open(next_file_path, 'r')
+                    if next_file_path.endswith('.gz'):
+                        current_csv_f = gzip.open(next_file_path, 'rt', newline='')
+                    else:
+                        current_csv_f = open(next_file_path, 'r', newline='')
                     current_csv_reader = csv.DictReader(current_csv_f)
                 except StopIteration:
                     # No more files to open

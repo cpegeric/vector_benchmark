@@ -7,7 +7,7 @@ A comprehensive benchmarking toolset for vector databases (optimized for MatrixO
 - **Reproducible Data**: Deterministic data generation using a base seed with independent random states for each column (`vector`, `i32v`, `f32v`, `str`).
 - **`.fvecs` Support**: Convert vector datasets from the standard `.fvecs` format into the benchmark's CSV format.
 - **Flexible Indexing**: Supports HNSW and IVFflat with configurable parameters via JSON.
-- **High-Performance Loading**: Uses `LOAD DATA INFILE` for rapid CSV ingestion.
+- **High-Performance Loading**: Uses `LOAD DATA INFILE` for rapid CSV ingestion, including support for gzipped CSV files.
 - **Advanced Search**: Benchmarks parallel search with support for pre-filtering (dynamic metadata conditions).
 - **Mixed Workloads**: Simulates real-world traffic with configurable ratios for Insert, Update, and Delete operations.
 
