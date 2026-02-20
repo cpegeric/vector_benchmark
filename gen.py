@@ -149,10 +149,18 @@ class AsyncGenerator:
                 break
 
 
-def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0):
+def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=None):
     gen = Generator(config, seed=seed)
     batch_size = config.get('batch_size', 1000)
-    total_size = config['dataset_size']
+    
+    # Determine total_size: prioritize num_items, then config['dataset_size']
+    if num_items is not None:
+        total_size = num_items
+    elif 'dataset_size' in config:
+        total_size = config['dataset_size']
+    else:
+        print("Error: 'dataset_size' not found in config and no --number specified.", file=sys.stderr)
+        sys.exit(1)
     
     print(f"Generating {total_size} rows to {output_file} with seed {seed} starting from ID {start_id}...")
     
@@ -250,6 +258,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate vector dataset")
     parser.add_argument("-f", "--config", help="Path to configuration file")
     parser.add_argument("-o", "--output", help="Output CSV file path")
+    parser.add_argument("-n", "--number", type=int, help="Number of items to generate (overrides dataset_size in config for generate_csv)")
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="Random seed")
     parser.add_argument("--start-id", type=int, default=0, help="Starting ID for the dataset")
     parser.add_argument("--fvecs", help="Path to .fvecs file to convert to CSV")
@@ -276,7 +285,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.output:
-        generate_csv(config, args.output, args.seed, args.start_id)
+        generate_csv(config, args.output, args.seed, args.start_id, num_items=args.number)
     else:
         # If no output file, just print a sample batch
         gen = Generator(config, seed=args.seed)

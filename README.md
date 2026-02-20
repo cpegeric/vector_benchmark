@@ -64,6 +64,9 @@ Generate a reproducible dataset into a CSV file for offline loading.
 # Generate 10k rows (based on cfg.json) to dataset.csv with seed 8888
 python3 gen.py -f cfg.json -o dataset.csv -s 8888
 
+# Generate 500 rows, overriding dataset_size from cfg.json
+python3 gen.py -f cfg.json -o dataset_small.csv -n 500
+
 # Generate extra data starting from a specific ID to avoid duplicates
 python3 gen.py -f cfg.json -o extra_data.csv --start-id 10001
 
