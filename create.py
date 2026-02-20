@@ -67,7 +67,7 @@ def create_index(cursor, config, async_mode=False):
     
     idx_name = index_cfg.get('name', 'myidx')
     idx_type = index_cfg.get('type', 'hnsw')
-    dist = index_cfg.get('op_type', config.get('distance', 'vector_l2_ops'))
+    dist = index_cfg.get('op_type', 'vector_l2_ops')
     m = index_cfg.get('m', 100)
     ef_c = index_cfg.get('ef_construction', 400)
     ef_s = index_cfg.get('ef_search', 200)
