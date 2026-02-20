@@ -29,6 +29,7 @@ import string
 import random
 import threading
 import queue
+import gzip
 
 # Seed for reproducibility
 DEFAULT_SEED = 8888
@@ -155,7 +156,13 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0):
     
     print(f"Generating {total_size} rows to {output_file} with seed {seed} starting from ID {start_id}...")
     
-    with open(output_file, 'w', newline='') as csvfile:
+    # Open the file, gzipped if the extension is .gz
+    if output_file.endswith('.gz'):
+        csv_fp = gzip.open(output_file, 'wt', newline='')
+    else:
+        csv_fp = open(output_file, 'w', newline='')
+
+    with csv_fp as csvfile:
         fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -198,7 +205,13 @@ def convert_fvecs_to_csv(fvecs_path, output_file, seed=DEFAULT_SEED, start_id=0,
     ]
     str_choices = list(string.ascii_letters + string.digits)
 
-    with open(output_file, 'w', newline='') as csvfile:
+    # Open the file, gzipped if the extension is .gz
+    if output_file.endswith('.gz'):
+        csv_fp = gzip.open(output_file, 'wt', newline='')
+    else:
+        csv_fp = open(output_file, 'w', newline='')
+
+    with csv_fp as csvfile:
         fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()

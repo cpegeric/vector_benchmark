@@ -2,8 +2,8 @@
 set -e
 
 CONFIG="cfg/hnsw.json"
-CSV_FILE="data/test_data_hnsw.csv"
-EXTRA_CSV="data/extra_data_hnsw.csv"
+CSV_FILE="data/test_data_hnsw.csv.gz"
+EXTRA_CSV="data/extra_data_hnsw.csv.gz"
 
 echo "=== Step 1: Data Generation ==="
 python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
