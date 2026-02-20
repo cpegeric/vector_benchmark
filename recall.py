@@ -119,7 +119,7 @@ def search_worker(config, mode, dataset, start, end, filters=None):
     end_time = time.time()
     return correct, eligible, total, end_time - start_time
 
-def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None, csv_file=None, start_id=0):
+def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None, csv_files=None, start_id=0):
     total_size = number if number is not None else config['dataset_size']
     # Use a large chunk size to minimize connection overhead per batch
     # But ensuring it's not too huge for memory
@@ -128,14 +128,14 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
     print(f"Starting recall test: queries={total_size}, mode={mode}, threads={threads}, seed={seed}, start_id={start_id}")
     if filters:
         print(f"Filters: {filters}")
-    if csv_file:
-        print(f"Reading from CSV: {csv_file}")
+    if csv_files:
+        print(f"Reading from CSV files: {csv_files}")
         
     print(f"Processing in chunks of {chunk_size}...")
 
     gen = None
     agen = None
-    if not csv_file:
+    if not csv_files: # Only use AsyncGenerator if no CSV files are provided
         gen = Generator(config, seed=seed)
         if start_id > 0:
             print(f"Fast-forwarding generator to ID {start_id}...")
@@ -155,13 +155,37 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
     total_worker_cpu_time = 0
     
     processed_count = 0
-    current_id = start_id
     
-    csv_f = None
-    csv_reader = None
-    if csv_file:
-        csv_f = open(csv_file, 'r')
-        csv_reader = csv.DictReader(csv_f)
+    # --- CSV reading setup for multiple files ---
+    csv_files_iterator = iter(csv_files) if csv_files else None
+    current_csv_f = None
+    current_csv_reader = None
+
+    def get_next_csv_row():
+        nonlocal current_csv_f, current_csv_reader, csv_files_iterator
+        while True:
+            if current_csv_reader:
+                try:
+                    return next(current_csv_reader)
+                except StopIteration:
+                    # Current file exhausted, close it and try next
+                    current_csv_f.close()
+                    current_csv_f = None
+                    current_csv_reader = None
+            
+            if csv_files_iterator:
+                try:
+                    # Open next file
+                    next_file_path = next(csv_files_iterator)
+                    current_csv_f = open(next_file_path, 'r')
+                    current_csv_reader = csv.DictReader(current_csv_f)
+                except StopIteration:
+                    # No more files to open
+                    csv_files_iterator = None
+                    raise # Propagate StopIteration
+            else:
+                # No files at all, or all files processed
+                raise StopIteration # Signal no more data
 
     try:
         while processed_count < total_size:
@@ -169,10 +193,10 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
             
             # 1. Get Data
             dataset = []
-            if csv_file:
+            if csv_files: # Check if any CSV files were provided
                 while len(dataset) < current_batch_size:
                     try:
-                        row = next(csv_reader)
+                        row = get_next_csv_row()
                         # Skip if ID is less than start_id
                         if int(row['id']) < start_id:
                             continue
@@ -192,8 +216,8 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
                         
                         dataset.append(row)
                     except StopIteration:
-                        break
-                if not dataset:
+                        break # No more rows from any CSV file
+                if not dataset: # If no data could be read after trying all files
                     break
             else:
                 # Use AsyncGenerator to get batch
@@ -236,14 +260,13 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
             
             batch_len = len(dataset)
             processed_count += batch_len
-            current_id += batch_len
             
             if processed_count % 10000 == 0 or processed_count == total_size:
                 print(f"Processed {processed_count}/{total_size} queries...")
 
     finally:
-        if csv_f:
-            csv_f.close()
+        if current_csv_f:
+            current_csv_f.close()
         if agen:
             agen.close()
 
@@ -273,7 +296,7 @@ def main():
     parser.add_argument("-t", "--threads", type=int, default=4, help="Number of threads")
     parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed")
     parser.add_argument("-n", "--number", type=int, help="Number of vectors to search")
-    parser.add_argument("-i", "--input", type=str, help="Input CSV file")
+    parser.add_argument("-i", "--input", action="append", help="Input CSV file(s). Can be specified multiple times.")
     parser.add_argument("--start-id", type=int, default=0, help="Start ID for testing")
     
     # Filter options
@@ -292,7 +315,7 @@ def main():
     if args.f32v is not None: filters['f32v'] = args.f32v
     if args.str is not None: filters['str'] = args.str
         
-    run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_file=args.input, start_id=args.start_id)
+    run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_files=args.input, start_id=args.start_id)
 
 if __name__ == "__main__":
     main()

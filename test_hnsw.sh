@@ -28,6 +28,8 @@ echo "--- CSV Input Mode ---"
 python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $CSV_FILE --start-id 0
 echo "--- Extra CSV Input Mode ---"
 python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $EXTRA_CSV
+echo "--- Multiple CSV Input Mode ---"
+python3 recall.py -f $CONFIG -m normal -n 100 -t 4 -i $EXTRA_CSV -i $CSV_FILE
 
 echo "=== Step 4: DML Operations ==="
 echo "--- Insert ---"
