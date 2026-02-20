@@ -10,7 +10,7 @@ python3 gen.py -f $CONFIG -o $CSV_FILE -s 1234
 python3 gen.py -f $CONFIG -o $EXTRA_CSV -s 5678 --start-id 1000001 -n 10000
 
 echo "=== Step 2: Setup Table and IVFflat Index ==="
-#python3 create.py -f $CONFIG -i $CSV_FILE
+python3 create.py -f $CONFIG -i $CSV_FILE
 
 echo "=== Step 3: Recall Tests ==="
 echo "--- Normal Mode ---"
