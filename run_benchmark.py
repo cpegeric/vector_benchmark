@@ -193,12 +193,6 @@ def run_suite(config_path, output_format='human', input_csv=None, extra_csv_in=N
                     print(f"  {key}: {value:.4f}")
                 else:
                     print(f"  {key}: {value}")
-    
-    # --- Cleanup ---
-    for f_path in temp_files:
-        if os.path.exists(f_path):
-            os.remove(f_path)
-            print(f"Cleaned up temporary file: {f_path}")
 
 def main():
     parser = argparse.ArgumentParser(description="Run benchmark suites in Python.")
