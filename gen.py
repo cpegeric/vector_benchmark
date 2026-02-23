@@ -167,7 +167,7 @@ def _generate_csv_chunk(args_tuple):
             
     return output_file
 
-def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=None, num_processes=1, compress_level=6):
+def generate_csv(config, output_file=None, output_prefix=None, seed=DEFAULT_SEED, start_id=0, num_items=None, num_processes=1, compress_level=6):
     batch_size = config.get('batch_size', 1000)
     
     if num_items is not None:
@@ -177,15 +177,21 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
     else:
         print("Error: 'dataset_size' not found in config and no --number specified.", file=sys.stderr)
         sys.exit(1)
-    
-    print(f"Generating {total_size} rows to {output_file} with seed {seed} starting from ID {start_id} using {num_processes} processes...")
+
+    op_target = output_prefix if output_prefix else output_file
+    print(f"Generating {total_size} rows to '{op_target}' with seed {seed} starting from ID {start_id} using {num_processes} processes...")
+
+    multi_file_no_merge = num_processes > 1 and output_prefix is not None
 
     if num_processes > 1:
-        temp_dir = os.path.dirname(output_file)
-        if not temp_dir:
-            temp_dir = '.'
-        temp_prefix = os.path.join(temp_dir, f"temp_gen_{os.getpid()}_")
-        temp_csv_files = []
+        if multi_file_no_merge:
+            output_filenames = []
+        else:
+            temp_dir = os.path.dirname(output_file)
+            if not temp_dir:
+                temp_dir = '.'
+            temp_prefix = os.path.join(temp_dir, f"temp_gen_{os.getpid()}_")
+            temp_csv_files = []
 
         items_per_process = total_size // num_processes
         remainder = total_size % num_processes
@@ -197,40 +203,54 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
             if chunk_size == 0:
                 continue
             
-            # Always generate plain CSV temp files
-            temp_csv_file = f"{temp_prefix}{i}.csv" 
-            temp_csv_files.append(temp_csv_file)
+            if multi_file_no_merge:
+                chunk_output_file = f"{output_prefix}{i}.csv"
+                output_filenames.append(chunk_output_file)
+                process_output_file = chunk_output_file
+            else:
+                # Always generate plain CSV temp files
+                temp_csv_file = f"{temp_prefix}{i}.csv" 
+                temp_csv_files.append(temp_csv_file)
+                process_output_file = temp_csv_file
             
-            pool_args.append((config, temp_csv_file, seed + i * 100, current_global_id, chunk_size, i == 0, compress_level))
+            pool_args.append((config, process_output_file, seed + i * 100, current_global_id, chunk_size, i == 0, compress_level))
             current_global_id += chunk_size
         
         with multiprocessing.Pool(processes=num_processes) as pool:
-            generated_temp_files = pool.map(_generate_csv_chunk, pool_args)
+            generated_files = pool.map(_generate_csv_chunk, pool_args)
 
-        # Concatenate generated temp files into the final output file
-        # The first temp file already has a header if is_first_chunk was True for it
-        if output_file.endswith('.gz'):
-            with gzip.open(output_file, 'wt', newline='', compresslevel=compress_level) as outfile:
-                for idx, fname in enumerate(generated_temp_files):
-                    with open(fname, 'rt', newline='') as infile: # Always read plain CSV
-                        for line_idx, line in enumerate(infile):
-                            if idx > 0 and line_idx == 0:
-                                continue
-                            outfile.write(line)
+        if multi_file_no_merge:
+            print("Finished generating chunk files. Merging is skipped as per --prefix option.")
+            for fname in generated_files:
+                print(f"  - Generated: {fname}")
         else:
-            with open(output_file, 'w', newline='') as outfile:
-                for idx, fname in enumerate(generated_temp_files):
-                    with open(fname, 'r', newline='') as infile: # Always read plain CSV
-                        for line_idx, line in enumerate(infile):
-                            if idx > 0 and line_idx == 0:
-                                continue
-                            outfile.write(line)
-        
-        for fname in temp_csv_files:
-            os.remove(fname)
-            print(f"Cleaned up temporary file: {fname}")
+            # Concatenate generated temp files into the final output file
+            if output_file.endswith('.gz'):
+                with gzip.open(output_file, 'wt', newline='', compresslevel=compress_level) as outfile:
+                    for idx, fname in enumerate(generated_files):
+                        with open(fname, 'rt', newline='') as infile:
+                            for line_idx, line in enumerate(infile):
+                                if idx > 0 and line_idx == 0:
+                                    continue
+                                outfile.write(line)
+            else:
+                with open(output_file, 'w', newline='') as outfile:
+                    for idx, fname in enumerate(generated_files):
+                        with open(fname, 'r', newline='') as infile:
+                            for line_idx, line in enumerate(infile):
+                                if idx > 0 and line_idx == 0:
+                                    continue
+                                outfile.write(line)
+            
+            for fname in temp_csv_files:
+                os.remove(fname)
+                print(f"Cleaned up temporary file: {fname}")
 
     else: # Sequential generation (existing logic)
+        # When using prefix with single process, just append .csv
+        if output_prefix:
+            output_file = f"{output_prefix}.csv"
+
         gen = Generator(config, seed=seed)
         
         if output_file.endswith('.gz'):
@@ -326,6 +346,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate vector dataset")
     parser.add_argument("-f", "--config", help="Path to configuration file")
     parser.add_argument("-o", "--output", help="Output CSV file path")
+    parser.add_argument("--prefix", help="Output file prefix. When used with -p > 1, files are not merged.")
     parser.add_argument("-n", "--number", type=int, help="Number of items to generate (overrides dataset_size in config for generate_csv)")
     parser.add_argument("-p", "--processes", type=int, default=1, help="Number of parallel processes for CSV generation")
     parser.add_argument("-cl", "--compress-level", type=int, default=6, choices=range(1, 10), metavar="[1-9]", help="Gzip compression level (1-9, 1=fastest, 9=best compression)")
@@ -334,8 +355,15 @@ if __name__ == "__main__":
     parser.add_argument("--fvecs", help="Path to .fvecs file to convert to CSV")
     
     args = parser.parse_args()
+
+    if args.output and args.prefix:
+        print("Error: --output and --prefix are mutually exclusive.", file=sys.stderr)
+        sys.exit(1)
     
     if args.fvecs:
+        if args.prefix:
+            print("Error: --prefix is not supported with --fvecs conversion.", file=sys.stderr)
+            sys.exit(1)
         if not args.output:
             print("Error: --output is required when using --fvecs")
             sys.exit(1)
@@ -354,8 +382,8 @@ if __name__ == "__main__":
         print(f"Error reading config file: {e}")
         sys.exit(1)
 
-    if args.output:
-        generate_csv(config, args.output, args.seed, args.start_id, num_items=args.number, num_processes=args.processes, compress_level=args.compress_level)
+    if args.output or args.prefix:
+        generate_csv(config, output_file=args.output, output_prefix=args.prefix, seed=args.seed, start_id=args.start_id, num_items=args.number, num_processes=args.processes, compress_level=args.compress_level)
     else:
         # If no output file, just print a sample batch
         gen = Generator(config, seed=args.seed)
