@@ -5,6 +5,7 @@ A comprehensive benchmarking toolset for vector databases (optimized for MatrixO
 ## Features
 
 - **Reproducible Data**: Deterministic data generation using a base seed with independent random states for each column (`vector`, `i32v`, `f32v`, `str`).
+- **Parallel CSV Generation**: Accelerate dataset creation with the `-p` option for `gen.py`.
 - **`.fvecs` Support**: Convert vector datasets from the standard `.fvecs` format into the benchmark's CSV format.
 - **Flexible Indexing**: Supports HNSW and IVFflat with configurable parameters via JSON.
 - **High-Performance Loading**: Uses `LOAD DATA INFILE` for rapid CSV ingestion, including support for gzipped CSV files.
@@ -67,6 +68,9 @@ python3 gen.py -f cfg.json -o dataset.csv -s 8888
 
 # Generate 500 rows, overriding dataset_size from cfg.json
 python3 gen.py -f cfg.json -o dataset_small.csv -n 500
+
+# Generate 10k rows in parallel using 4 processes
+python3 gen.py -f cfg.json -o dataset_parallel.csv -s 8888 -p 4
 
 # Generate extra data starting from a specific ID to avoid duplicates
 python3 gen.py -f cfg.json -o extra_data.csv --start-id 10001
