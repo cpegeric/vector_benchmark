@@ -8,7 +8,7 @@ from create import setup_database
 from recall import run_recall_test
 from dml import run_insert, run_update, run_delete, run_append_csv, run_mix
 
-def _create_step(config, input_csvs, extra_csv_in, skip_create, run_dml_append_test, seed, temp_files):
+def _create_step(config, input_csvs, extra_csv_in, skip_create, run_dml_append_test, seed, temp_files, gen_prefix=None, gen_processes=1):
     """
     Handles data generation and database setup.
     Returns (base_csv_paths, extra_csv_path) used for subsequent steps.
@@ -43,10 +43,14 @@ def _create_step(config, input_csvs, extra_csv_in, skip_create, run_dml_append_t
     else: # Not skipping creation (generate and setup)
         # === Step 1: Data Generation ===
         print("\n--- Step 1: Data Generation ---")
-        if not base_csv_paths: # If no input_csvs provided, generate a single base CSV
+        if gen_prefix:
+            print(f"Generating data with prefix '{gen_prefix}' using {gen_processes} processes.")
+            base_csv_paths = generate_csv(config, output_prefix=gen_prefix, seed=seed, num_processes=gen_processes)
+            temp_files.extend(base_csv_paths)
+            print(f"Base data generated in {len(base_csv_paths)} files with prefix '{gen_prefix}'")
+        elif not base_csv_paths: # If no input_csvs provided, generate a single base CSV
             temp_base_csv_file = f"data/temp_{config.get('table', 'default')}_base.csv"
-            generate_csv(config, temp_base_csv_file, seed=seed)
-            base_csv_paths = [temp_base_csv_file] # Make it a list
+            base_csv_paths = generate_csv(config, temp_base_csv_file, seed=seed)
             temp_files.extend(base_csv_paths)
             print(f"Base data generated: {base_csv_paths[0]}")
         else:
@@ -124,7 +128,7 @@ def _dml_step(config, extra_csv_path, run_dml_append_test, dml_count, dml_batch_
     mix_stats['test_name'] = 'dml_mix'
     all_stats.append(mix_stats)
 
-def run_suite(config_path, output_format='human', input_csvs=None, extra_csv_in=None, skip_create=False, skip_append=False, skip_recall=False, skip_dml=False, enable_force_recall=False, threads=4, seed=8888, number=100, filter_i32v=None, filter_f32v=None, filter_str=None, dml_count=1000, dml_batch_size=1000, dml_ratios="1,8,1"):
+def run_suite(config_path, output_format='human', input_csvs=None, extra_csv_in=None, skip_create=False, skip_append=False, skip_recall=False, skip_dml=False, gen_prefix=None, gen_processes=1, enable_force_recall=False, threads=4, seed=8888, number=100, filter_i32v=None, filter_f32v=None, filter_str=None, dml_count=1000, dml_batch_size=1000, dml_ratios="1,8,1"):
     """
     Orchestrates the full benchmark suite execution.
     """
@@ -142,21 +146,22 @@ def run_suite(config_path, output_format='human', input_csvs=None, extra_csv_in=
 
     skip_dml_append = skip_append or skip_dml
     if not skip_create:
-        base_csv_paths, extra_csv_path = _create_step(config, input_csvs, extra_csv_in, skip_create, not skip_dml_append, seed, temp_files)
+        base_csv_paths, extra_csv_path = _create_step(config, input_csvs, extra_csv_in, skip_create, not skip_dml_append, seed, temp_files, gen_prefix=gen_prefix, gen_processes=gen_processes)
     else:
         print("\n--- Skipping Data Generation and Table Setup ---")
-        if not input_csvs:
-            print("Error: --skip-create requires at least one --input-csv to be specified.", file=sys.stderr)
+        if not input_csvs and not gen_prefix:
+            print("Error: --skip-create requires at least one --input-csv or --gen-prefix to be specified.", file=sys.stderr)
             sys.exit(1)
-        for csv_file in input_csvs:
-            if not os.path.exists(csv_file):
-                print(f"Error: --skip-create specified, but base CSV file '{csv_file}' is missing.", file=sys.stderr)
-                sys.exit(1)
+        if input_csvs:
+            for csv_file in input_csvs:
+                if not os.path.exists(csv_file):
+                    print(f"Error: --skip-create specified, but base CSV file '{csv_file}' is missing.", file=sys.stderr)
+                    sys.exit(1)
         
-        base_csv_paths = input_csvs
-        extra_csv_path = extra_csv_in # Extra CSV from input arg for DML append test if it runs
+        base_csv_paths = input_csvs if input_csvs else []
+        extra_csv_path = extra_csv_in
         
-        if not skip_dml_append: # If append test is to be run, check for extra-csv
+        if not skip_dml_append:
             if not extra_csv_path:
                  print("Error: --skip-create and DML append test requires --extra-csv to be specified.", file=sys.stderr)
                  sys.exit(1)
@@ -213,6 +218,8 @@ def main():
     parser.add_argument("--skip-append", action="store_true", help="Skip the DML append test.")
     parser.add_argument("--skip-recall", action="store_true", help="Skip all recall tests.")
     parser.add_argument("--skip-dml", action="store_true", help="Skip all DML tests.")
+    parser.add_argument("--gen-prefix", help="Prefix for generating chunked data files.")
+    parser.add_argument("--gen-processes", type=int, default=1, help="Number of processes for data generation.")
     parser.add_argument("-t", "--threads", type=int, default=4, help="Number of threads for recall tests")
     parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed for recall tests and generated data.")
     parser.add_argument("-n", "--number", type=int, default=100, help="Number of vectors for recall tests (overrides config's dataset_size for recall).")
@@ -257,6 +264,8 @@ def main():
               skip_append=args.skip_append, 
               skip_recall=args.skip_recall,
               skip_dml=args.skip_dml,
+              gen_prefix=args.gen_prefix,
+              gen_processes=args.gen_processes,
               enable_force_recall=args.enable_force_recall,
               threads=args.threads, 
               seed=args.seed, 

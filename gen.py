@@ -223,6 +223,8 @@ def generate_csv(config, output_file=None, output_prefix=None, seed=DEFAULT_SEED
             print("Finished generating chunk files. Merging is skipped as per --prefix option.")
             for fname in generated_files:
                 print(f"  - Generated: {fname}")
+            print(f"Finished generating {total_size} rows.")
+            return generated_files
         else:
             # Concatenate generated temp files into the final output file
             if output_file.endswith('.gz'):
@@ -245,6 +247,8 @@ def generate_csv(config, output_file=None, output_prefix=None, seed=DEFAULT_SEED
             for fname in temp_csv_files:
                 os.remove(fname)
                 print(f"Cleaned up temporary file: {fname}")
+            print(f"Finished generating {total_size} rows.")
+            return [output_file]
 
     else: # Sequential generation (existing logic)
         # When using prefix with single process, just append .csv
@@ -272,7 +276,8 @@ def generate_csv(config, output_file=None, output_prefix=None, seed=DEFAULT_SEED
                 if count % 10000 == 0:
                     print(f"{count} rows written...")
                     
-    print(f"Finished generating {total_size} rows.")
+        print(f"Finished generating {total_size} rows.")
+        return [output_file]
 
 def fvecs_read(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)
