@@ -126,6 +126,8 @@ python3 dml.py mix -f cfg.json -n 5000 -r 1,8,1 -b 500
 
 This is the primary script to run comprehensive benchmark suites. It orchestrates data generation, database setup, recall, and DML tests, collecting and presenting all results.
 
+**Note**: `run_benchmark.py` currently only supports **synchronous** index creation. This means that while it can create various index types (like HNSW or IVFflat), they will all be built synchronously. This might not be optimal or desired for certain index types (e.g., HNSW) that often benefit from or are intended for asynchronous building.
+
 ```bash
 # Example: Run a full suite with HNSW config, human-readable output
 python3 run_benchmark.py -c cfg/hnsw.json -o human
