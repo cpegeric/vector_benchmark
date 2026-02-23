@@ -148,14 +148,12 @@ def _generate_csv_chunk(args_tuple):
     gen = Generator(config, seed=seed)
     batch_size = config.get('batch_size', 1000)
     
-    if output_file.endswith('.gz'):
-        csv_fp = gzip.open(output_file, 'wt', newline='')
-    else:
-        csv_fp = open(output_file, 'w', newline='')
+    # Always open as a plain CSV file for temporary chunks
+    csv_fp = open(output_file, 'w', newline='')
     
     with csv_fp as csvfile:
         fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, restval='')
         
         if is_first_chunk: # Only write header for the first chunk
             writer.writeheader()
@@ -199,9 +197,8 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
             if chunk_size == 0:
                 continue
             
-            temp_csv_file = f"{temp_prefix}{i}.csv"
-            if output_file.endswith('.gz'):
-                temp_csv_file += '.gz'
+            # Always generate plain CSV temp files
+            temp_csv_file = f"{temp_prefix}{i}.csv" 
             temp_csv_files.append(temp_csv_file)
             
             pool_args.append((config, temp_csv_file, seed + i * 100, current_global_id, chunk_size, i == 0))
@@ -210,10 +207,12 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
         with multiprocessing.Pool(processes=num_processes) as pool:
             generated_temp_files = pool.map(_generate_csv_chunk, pool_args)
 
+        # Concatenate generated temp files into the final output file
+        # The first temp file already has a header if is_first_chunk was True for it
         if output_file.endswith('.gz'):
             with gzip.open(output_file, 'wt', newline='') as outfile:
                 for idx, fname in enumerate(generated_temp_files):
-                    with gzip.open(fname, 'rt', newline='') as infile:
+                    with open(fname, 'rt', newline='') as infile: # Always read plain CSV
                         for line_idx, line in enumerate(infile):
                             if idx > 0 and line_idx == 0:
                                 continue
@@ -221,7 +220,7 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
         else:
             with open(output_file, 'w', newline='') as outfile:
                 for idx, fname in enumerate(generated_temp_files):
-                    with open(fname, 'r', newline='') as infile:
+                    with open(fname, 'r', newline='') as infile: # Always read plain CSV
                         for line_idx, line in enumerate(infile):
                             if idx > 0 and line_idx == 0:
                                 continue
@@ -241,7 +240,7 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
 
         with csv_fp as csvfile:
             fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, restval='')
             writer.writeheader()
             
             count = 0
