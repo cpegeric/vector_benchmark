@@ -144,7 +144,7 @@ class AsyncGenerator:
                 break
 
 def _generate_csv_chunk(args_tuple):
-    config, output_file, seed, start_id, num_items_in_chunk, is_first_chunk = args_tuple
+    config, output_file, seed, start_id, num_items_in_chunk, is_first_chunk, compress_level = args_tuple
     gen = Generator(config, seed=seed)
     batch_size = config.get('batch_size', 1000)
     
@@ -167,7 +167,7 @@ def _generate_csv_chunk(args_tuple):
             
     return output_file
 
-def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=None, num_processes=1):
+def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=None, num_processes=1, compress_level=6):
     batch_size = config.get('batch_size', 1000)
     
     if num_items is not None:
@@ -201,7 +201,7 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
             temp_csv_file = f"{temp_prefix}{i}.csv" 
             temp_csv_files.append(temp_csv_file)
             
-            pool_args.append((config, temp_csv_file, seed + i * 100, current_global_id, chunk_size, i == 0))
+            pool_args.append((config, temp_csv_file, seed + i * 100, current_global_id, chunk_size, i == 0, compress_level))
             current_global_id += chunk_size
         
         with multiprocessing.Pool(processes=num_processes) as pool:
@@ -210,7 +210,7 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
         # Concatenate generated temp files into the final output file
         # The first temp file already has a header if is_first_chunk was True for it
         if output_file.endswith('.gz'):
-            with gzip.open(output_file, 'wt', newline='') as outfile:
+            with gzip.open(output_file, 'wt', newline='', compresslevel=compress_level) as outfile:
                 for idx, fname in enumerate(generated_temp_files):
                     with open(fname, 'rt', newline='') as infile: # Always read plain CSV
                         for line_idx, line in enumerate(infile):
@@ -234,7 +234,7 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
         gen = Generator(config, seed=seed)
         
         if output_file.endswith('.gz'):
-            csv_fp = gzip.open(output_file, 'wt', newline='')
+            csv_fp = gzip.open(output_file, 'wt', newline='', compresslevel=compress_level)
         else:
             csv_fp = open(output_file, 'w', newline='')
 
@@ -266,7 +266,7 @@ def fvecs_read(filename, c_contiguous=True):
     fv = fv[:, 1:]
     return fv
 
-def convert_fvecs_to_csv(fvecs_path, output_file, seed=DEFAULT_SEED, start_id=0, batch_size=1000):
+def convert_fvecs_to_csv(fvecs_path, output_file, seed=DEFAULT_SEED, start_id=0, batch_size=1000, compress_level=6):
     print(f"Reading vectors from {fvecs_path}...")
     vectors = fvecs_read(fvecs_path)
     total_size = len(vectors)
@@ -283,13 +283,13 @@ def convert_fvecs_to_csv(fvecs_path, output_file, seed=DEFAULT_SEED, start_id=0,
 
     # Open the file, gzipped if the extension is .gz
     if output_file.endswith('.gz'):
-        csv_fp = gzip.open(output_file, 'wt', newline='')
+        csv_fp = gzip.open(output_file, 'wt', newline='', compresslevel=compress_level)
     else:
         csv_fp = open(output_file, 'w', newline='')
 
     with csv_fp as csvfile:
         fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, restval='')
         writer.writeheader()
 
         for i in range(0, total_size, batch_size):
@@ -328,6 +328,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", help="Output CSV file path")
     parser.add_argument("-n", "--number", type=int, help="Number of items to generate (overrides dataset_size in config for generate_csv)")
     parser.add_argument("-p", "--processes", type=int, default=1, help="Number of parallel processes for CSV generation")
+    parser.add_argument("-cl", "--compress-level", type=int, default=6, choices=range(1, 10), metavar="[1-9]", help="Gzip compression level (1-9, 1=fastest, 9=best compression)")
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="Random seed")
     parser.add_argument("--start-id", type=int, default=0, help="Starting ID for the dataset")
     parser.add_argument("--fvecs", help="Path to .fvecs file to convert to CSV")
@@ -338,7 +339,7 @@ if __name__ == "__main__":
         if not args.output:
             print("Error: --output is required when using --fvecs")
             sys.exit(1)
-        convert_fvecs_to_csv(args.fvecs, args.output, args.seed, args.start_id)
+        convert_fvecs_to_csv(args.fvecs, args.output, args.seed, args.start_id, compress_level=args.compress_level)
         sys.exit(0)
 
     # The rest of the script requires config
@@ -354,7 +355,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.output:
-        generate_csv(config, args.output, args.seed, args.start_id, num_items=args.number, num_processes=args.processes)
+        generate_csv(config, args.output, args.seed, args.start_id, num_items=args.number, num_processes=args.processes, compress_level=args.compress_level)
     else:
         # If no output file, just print a sample batch
         gen = Generator(config, seed=args.seed)
