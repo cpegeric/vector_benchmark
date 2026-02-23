@@ -129,8 +129,8 @@ This is the primary script to run comprehensive benchmark suites. It orchestrate
 **Note**: `run_benchmark.py` currently only supports **synchronous** index creation. This means that while it can create various index types (like HNSW or IVFflat), they will all be built synchronously. This might not be optimal or desired for certain index types (e.g., HNSW) that often benefit from or are intended for asynchronous building.
 
 ```bash
-# Example: Run a full suite with HNSW config, human-readable output
-python3 run_benchmark.py -c cfg/hnsw.json -o human
+# Example: Run a full suite with IVFflat config, human-readable output
+python3 run_benchmark.py -c cfg/ivfflat.json -o human
 
 # Example: Run a suite, skipping create and DML, outputting CSV
 python3 run_benchmark.py -c cfg/ivfflat.json \
