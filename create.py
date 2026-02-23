@@ -127,6 +127,7 @@ def insert_data(cursor, config, csv_files=None, seed=8888):
             ENCLOSED BY '"' 
             LINES TERMINATED BY '\\r\\n' 
             IGNORE 1 LINES
+            PARALLEL 'true'
             """
             
             print(f"Executing: {sql}")

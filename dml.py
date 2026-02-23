@@ -184,6 +184,7 @@ def run_append_csv(config, csv_file):
             ENCLOSED BY '"' 
             LINES TERMINATED BY '\r\n' 
             IGNORE 1 LINES
+            PARALLEL 'true'
             """
             
             start_time = time.time()
