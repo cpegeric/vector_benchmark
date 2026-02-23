@@ -67,7 +67,10 @@ def run_insert(config, count, batch_size=1000, seed=8888):
                     print(f"Inserted {total_inserted} rows...")
                     
             end_time = time.time()
-            print(f"Inserted {total_inserted} rows in {end_time - start_time:.4f} seconds")
+            duration = end_time - start_time
+            rows_per_sec = total_inserted / duration if duration > 0 else 0
+            print(f"Inserted {total_inserted} rows in {duration:.4f} seconds ({rows_per_sec:.2f} rows/s)")
+            return {'operation': 'insert', 'rows': total_inserted, 'time_s': duration, 'rows_per_sec': rows_per_sec}
             
     finally:
         conn.close()
@@ -113,7 +116,10 @@ def run_update(config, count, batch_size=1000, seed=8888):
                     break
             
             end_time = time.time()
-            print(f"Total updated: {total_updated} rows in {end_time - start_time:.4f} seconds")
+            duration = end_time - start_time
+            rows_per_sec = total_updated / duration if duration > 0 else 0
+            print(f"Total updated: {total_updated} rows in {duration:.4f} seconds ({rows_per_sec:.2f} rows/s)")
+            return {'operation': 'update', 'rows': total_updated, 'time_s': duration, 'rows_per_sec': rows_per_sec}
             
     finally:
         conn.close()
@@ -152,7 +158,10 @@ def run_delete(config, count, batch_size=1000):
                     break
 
             end_time = time.time()
-            print(f"Total deleted: {total_deleted} rows in {end_time - start_time:.4f} seconds")
+            duration = end_time - start_time
+            rows_per_sec = total_deleted / duration if duration > 0 else 0
+            print(f"Total deleted: {total_deleted} rows in {duration:.4f} seconds ({rows_per_sec:.2f} rows/s)")
+            return {'operation': 'delete', 'rows': total_deleted, 'time_s': duration, 'rows_per_sec': rows_per_sec}
             
     finally:
         conn.close()
@@ -181,8 +190,10 @@ def run_append_csv(config, csv_file):
             print(f"Executing: {sql}")
             cursor.execute(sql)
             end_time = time.time()
+            duration = end_time - start_time
             
-            print(f"Data append finished in {end_time - start_time:.4f} seconds")
+            print(f"Data append finished in {duration:.4f} seconds")
+            return {'operation': 'append', 'csv_file': csv_file, 'time_s': duration}
             
     finally:
         conn.close()
@@ -255,10 +266,12 @@ def run_mix(config, total_ops, ratios, batch_size=1000, seed=8888):
                     elapsed = time.time() - start_time
                     print(f"Executed {total_executed}/{total_ops} ops (Time: {elapsed:.2f}s)...")
 
-            end_time = time.time() - start_time
+            duration = time.time() - start_time
+            qps = total_executed / duration if duration > 0 else 0
             print("-" * 40)
-            print(f"Mixed workload completed. QPS: {total_executed / end_time:.2f}")
+            print(f"Mixed workload completed. QPS: {qps:.2f}")
             print("-" * 40)
+            return {'operation': 'mix', 'total_ops': total_executed, 'time_s': duration, 'qps': qps}
     finally:
         conn.close()
 
@@ -300,16 +313,26 @@ def main():
     with open(args.config, 'r') as f:
         config = json.load(f)
     
+    stats = None
     if args.command == "insert":
-        run_insert(config, args.number, args.batch_size, args.seed)
+        stats = run_insert(config, args.number, args.batch_size, args.seed)
     elif args.command == "update":
-        run_update(config, args.number, args.batch_size, args.seed)
+        stats = run_update(config, args.number, args.batch_size, args.seed)
     elif args.command == "delete":
-        run_delete(config, args.number, args.batch_size)
+        stats = run_delete(config, args.number, args.batch_size)
     elif args.command == "append":
-        run_append_csv(config, args.input)
+        stats = run_append_csv(config, args.input)
     elif args.command == "mix":
-        run_mix(config, args.number, args.ratios, args.batch_size, args.seed)
+        stats = run_mix(config, args.number, args.ratios, args.batch_size, args.seed)
+
+    if stats:
+        print("\n--- DML Results ---")
+        for key, value in stats.items():
+            if isinstance(value, float):
+                print(f"{key}: {value:.4f}")
+            else:
+                print(f"{key}: {value}")
+        print("-" * 20)
 
 if __name__ == "__main__":
     main()

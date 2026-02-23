@@ -282,17 +282,17 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
     # Avg Latency based on total worker execution time (pure search time) / queries
     avg_latency = (total_worker_cpu_time / total_queries) * 1000 if total_queries > 0 else 0
     
-    print("-" * 40)
-    print(f"Mode: {mode}")
-    print(f"Seed: {seed}")
-    print(f"Total Queries: {total_queries}")
-    print(f"Eligible Queries: {total_eligible}")
-    print(f"Correct Hits: {total_correct}")
-    print(f"Recall Rate: {recall_rate:.4f} (Correct / Eligible)")
-    print(f"QPS: {qps:.2f} (Search Time Only)")
-    print(f"Avg Latency: {avg_latency:.4f} ms")
-    print(f"Total Search Wall Time: {total_search_wall_time:.4f} s")
-    print("-" * 40)
+    return {
+        "mode": mode,
+        "seed": seed,
+        "total_queries": total_queries,
+        "eligible_queries": total_eligible,
+        "correct_hits": total_correct,
+        "recall_rate": recall_rate,
+        "qps": qps,
+        "avg_latency_ms": avg_latency,
+        "total_search_wall_time_s": total_search_wall_time
+    }
 
 def main():
     parser = argparse.ArgumentParser(description="Run recall test")
@@ -320,7 +320,19 @@ def main():
     if args.f32v is not None: filters['f32v'] = args.f32v
     if args.str is not None: filters['str'] = args.str
         
-    run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_files=args.input, start_id=args.start_id)
+    stats = run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_files=args.input, start_id=args.start_id)
+
+    print("-" * 40)
+    print(f"Mode: {stats['mode']}")
+    print(f"Seed: {stats['seed']}")
+    print(f"Total Queries: {stats['total_queries']}")
+    print(f"Eligible Queries: {stats['eligible_queries']}")
+    print(f"Correct Hits: {stats['correct_hits']}")
+    print(f"Recall Rate: {stats['recall_rate']:.4f} (Correct / Eligible)")
+    print(f"QPS: {stats['qps']:.2f} (Search Time Only)")
+    print(f"Avg Latency: {stats['avg_latency_ms']:.4f} ms")
+    print(f"Total Search Wall Time: {stats['total_search_wall_time_s']:.4f} s")
+    print("-" * 40)
 
 if __name__ == "__main__":
     main()

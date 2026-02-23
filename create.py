@@ -153,18 +153,8 @@ def insert_data(cursor, config, csv_files=None, seed=8888):
     end_time = time.time()
     print(f"Data load finished in {end_time - start_time:.4f} seconds")
 
-def main():
-    parser = argparse.ArgumentParser(description="Create table and index")
-    parser.add_argument("-f", "--config", required=True, help="Path to config file")
-    parser.add_argument("-i", "--input", action="append", help="Input CSV file(s). Can be specified multiple times.")
-    parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed for stream generation")
-    parser.add_argument("-a", "--async_mode", action="store_true", help="Asynchronous mode")
-    
-    args = parser.parse_args()
-    
-    with open(args.config, 'r') as f:
-        config = json.load(f)
-
+def setup_database(config, csv_files=None, seed=8888, async_mode=False):
+    """The main logic for setting up the database, can be imported."""
     # Connect without database first
     conn = get_db_connection(config, use_db=False)
     
@@ -186,21 +176,35 @@ def main():
             create_table(cursor, config)
             
             # 4. Mode handling
-            if args.async_mode:
+            if async_mode:
                 # Async: Create Index -> Insert
                 print("Running in ASYNC mode")
                 create_index(cursor, config, async_mode=True)
-                insert_data(cursor, config, csv_files=args.input, seed=args.seed)
+                insert_data(cursor, config, csv_files=csv_files, seed=seed)
             else:
                 # Sync (Default): Insert -> Create Index
                 print("Running in SYNC mode (default)")
-                insert_data(cursor, config, csv_files=args.input, seed=args.seed)
+                insert_data(cursor, config, csv_files=csv_files, seed=seed)
                 create_index(cursor, config, async_mode=False)
                 
     except Exception as e:
         print(f"Error: {e}")
     finally:
         conn.close()
+
+def main():
+    parser = argparse.ArgumentParser(description="Create table and index")
+    parser.add_argument("-f", "--config", required=True, help="Path to config file")
+    parser.add_argument("-i", "--input", action="append", help="Input CSV file(s). Can be specified multiple times.")
+    parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed for stream generation")
+    parser.add_argument("-a", "--async_mode", action="store_true", help="Asynchronous mode")
+    
+    args = parser.parse_args()
+    
+    with open(args.config, 'r') as f:
+        config = json.load(f)
+
+    setup_database(config, csv_files=args.input, seed=args.seed, async_mode=args.async_mode)
 
 if __name__ == "__main__":
     main()
