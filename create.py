@@ -197,6 +197,7 @@ def main():
     parser = argparse.ArgumentParser(description="Create table and index")
     parser.add_argument("-f", "--config", required=True, help="Path to config file")
     parser.add_argument("-i", "--input", action="append", help="Input CSV file(s). Can be specified multiple times.")
+    parser.add_argument("--prefix", help="Input file prefix. Files matching this prefix will be added to the input list.")
     parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed for stream generation")
     parser.add_argument("-a", "--async_mode", action="store_true", help="Asynchronous mode")
     
@@ -205,7 +206,30 @@ def main():
     with open(args.config, 'r') as f:
         config = json.load(f)
 
-    setup_database(config, csv_files=args.input, seed=args.seed, async_mode=args.async_mode)
+    csv_files = args.input if args.input else []
+    if args.prefix:
+        directory = os.path.dirname(args.prefix)
+        if not directory:
+            directory = '.'
+        prefix_base = os.path.basename(args.prefix)
+        
+        try:
+            files_in_dir = os.listdir(directory)
+            matched_files = [os.path.join(directory, f) for f in files_in_dir if f.startswith(prefix_base)]
+            matched_files.sort()
+            if matched_files:
+                print(f"Found {len(matched_files)} files with prefix '{args.prefix}':")
+                for f in matched_files:
+                    print(f"  - {f}")
+                csv_files.extend(matched_files)
+            else:
+                print(f"No files found with prefix '{args.prefix}'")
+        except FileNotFoundError:
+             print(f"Directory not found for prefix: {directory}")
+
+    final_csv_files = csv_files if csv_files else None
+
+    setup_database(config, csv_files=final_csv_files, seed=args.seed, async_mode=args.async_mode)
 
 if __name__ == "__main__":
     main()

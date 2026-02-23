@@ -207,6 +207,7 @@ def main():
     parser.add_argument("-c", "--config", required=True, help="Path to config file for the suite (e.g., cfg/hnsw.json)")
     parser.add_argument("-o", "--output", choices=['human', 'csv'], default='human', help="Output format")
     parser.add_argument("--input-csv", action="append", help="Path to existing base CSV file(s) to use (skips generation if --skip-create is used). Can be specified multiple times.")
+    parser.add_argument("--prefix", help="Input file prefix. Files matching this prefix will be added to the input list.")
     parser.add_argument("--extra-csv", help="Path to an existing extra CSV file for DML tests (skips generation if --skip-create is used and --skip-append is False).")
     parser.add_argument("--skip-create", action="store_true", help="Skip data generation and table creation. Requires --input-csv and --extra-csv if DML append is run.")
     parser.add_argument("--skip-append", action="store_true", help="Skip the DML append test.")
@@ -225,9 +226,32 @@ def main():
     parser.add_argument("--enable-force-recall", action="store_true", help="Enable recall test with 'force' mode (default is false).")
     args = parser.parse_args()
 
+    csv_files = args.input_csv if args.input_csv else []
+    if args.prefix:
+        directory = os.path.dirname(args.prefix)
+        if not directory:
+            directory = '.'
+        prefix_base = os.path.basename(args.prefix)
+        
+        try:
+            files_in_dir = os.listdir(directory)
+            matched_files = [os.path.join(directory, f) for f in files_in_dir if f.startswith(prefix_base)]
+            matched_files.sort()
+            if matched_files:
+                print(f"Found {len(matched_files)} files with prefix '{args.prefix}':")
+                for f in matched_files:
+                    print(f"  - {f}")
+                csv_files.extend(matched_files)
+            else:
+                print(f"No files found with prefix '{args.prefix}'")
+        except FileNotFoundError:
+             print(f"Directory not found for prefix: {directory}")
+
+    final_csv_files = csv_files if csv_files else None
+
     run_suite(config_path=args.config, 
               output_format=args.output, 
-              input_csvs=args.input_csv, 
+              input_csvs=final_csv_files, 
               extra_csv_in=args.extra_csv, 
               skip_create=args.skip_create, 
               skip_append=args.skip_append, 

@@ -33,6 +33,7 @@ import numpy as np
 import csv
 import ast
 import gzip
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from gen import Generator, AsyncGenerator
 from db import get_db_connection, set_env
@@ -324,6 +325,7 @@ def main():
     parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed")
     parser.add_argument("-n", "--number", type=int, help="Number of vectors to search")
     parser.add_argument("-i", "--input", action="append", help="Input CSV file(s). Can be specified multiple times.")
+    parser.add_argument("--prefix", help="Input file prefix. Files matching this prefix will be added to the input list.")
     parser.add_argument("--start-id", type=int, default=0, help="Start ID for testing")
     
     # Filter options
@@ -336,13 +338,36 @@ def main():
     with open(args.config, 'r') as f:
         config = json.load(f)
     
+    csv_files = args.input if args.input else []
+    if args.prefix:
+        directory = os.path.dirname(args.prefix)
+        if not directory:
+            directory = '.'
+        prefix_base = os.path.basename(args.prefix)
+        
+        try:
+            files_in_dir = os.listdir(directory)
+            matched_files = [os.path.join(directory, f) for f in files_in_dir if f.startswith(prefix_base)]
+            matched_files.sort()
+            if matched_files:
+                print(f"Found {len(matched_files)} files with prefix '{args.prefix}':")
+                for f in matched_files:
+                    print(f"  - {f}")
+                csv_files.extend(matched_files)
+            else:
+                print(f"No files found with prefix '{args.prefix}'")
+        except FileNotFoundError:
+             print(f"Directory not found for prefix: {directory}")
+
+    final_csv_files = csv_files if csv_files else None
+
     # Collect filters
     filters = {}
     if args.i32v is not None: filters['i32v'] = args.i32v
     if args.f32v is not None: filters['f32v'] = args.f32v
     if args.str is not None: filters['str'] = args.str
         
-    stats = run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_files=args.input, start_id=args.start_id)
+    stats = run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_files=final_csv_files, start_id=args.start_id)
 
     print("-" * 40)
     print(f"Mode: {stats['mode']}")
