@@ -73,13 +73,16 @@ def _create_step(config, input_csv, extra_csv_in, skip_create, run_dml_append_te
     
     return base_csv_path, extra_csv_path
 
-def _recall_step(config, threads, seed, number, recall_filters, all_stats):
+def _recall_step(config, threads, seed, number, recall_filters, all_stats, enable_force_recall=False):
     """
     Handles recall tests.
     """
     print("\n--- Step 3: Recall Tests ---")
     recall_modes = ['normal', 'pre', 'post', 'force']
     for mode in recall_modes:
+        if mode == 'force' and not enable_force_recall:
+            print(f"Skipping recall test for mode '{mode}' (not enabled).")
+            continue
         stats = run_recall_test(config, mode=mode, threads=threads, number=number, seed=seed, filters=recall_filters)
         stats['test_name'] = f"recall_{mode}"
         all_stats.append(stats)
@@ -118,7 +121,7 @@ def _dml_step(config, extra_csv_path, run_dml_append_test, dml_count, dml_batch_
     mix_stats['test_name'] = 'dml_mix'
     all_stats.append(mix_stats)
 
-def run_suite(config_path, output_format='human', input_csv=None, extra_csv_in=None, skip_create=False, skip_append=False, skip_recall=False, skip_dml=False, threads=4, seed=8888, number=100, filter_i32v=None, filter_f32v=None, filter_str=None, dml_count=1000, dml_batch_size=1000, dml_ratios="1,8,1"):
+def run_suite(config_path, output_format='human', input_csv=None, extra_csv_in=None, skip_create=False, skip_append=False, skip_recall=False, skip_dml=False, enable_force_recall=False, threads=4, seed=8888, number=100, filter_i32v=None, filter_f32v=None, filter_str=None, dml_count=1000, dml_batch_size=1000, dml_ratios="1,8,1"):
     """
     Orchestrates the full benchmark suite execution.
     """
@@ -134,8 +137,9 @@ def run_suite(config_path, output_format='human', input_csv=None, extra_csv_in=N
     extra_csv_path = None
     temp_files = []
 
+    skip_dml_append = skip_append or skip_dml
     if not skip_create:
-        base_csv_path, extra_csv_path = _create_step(config, input_csv, extra_csv_in, skip_create, not skip_append, seed, temp_files)
+        base_csv_path, extra_csv_path = _create_step(config, input_csv, extra_csv_in, skip_create, not skip_dml_append, seed, temp_files)
     else:
         print("\n--- Skipping Data Generation and Table Setup ---")
         if not input_csv:
@@ -148,7 +152,7 @@ def run_suite(config_path, output_format='human', input_csv=None, extra_csv_in=N
         base_csv_path = input_csv
         extra_csv_path = extra_csv_in # Extra CSV from input arg for DML append test if it runs
         
-        if not skip_append: # If append test is to be run, check for extra-csv
+        if not skip_dml_append: # If append test is to be run, check for extra-csv
             if not extra_csv_path:
                  print("Error: --skip-create and DML append test requires --extra-csv to be specified.", file=sys.stderr)
                  sys.exit(1)
@@ -157,7 +161,7 @@ def run_suite(config_path, output_format='human', input_csv=None, extra_csv_in=N
                 sys.exit(1)
 
         print(f"Using pre-existing base CSV: {base_csv_path}")
-        if not skip_append:
+        if not skip_dml_append:
             print(f"Using pre-existing extra CSV: {extra_csv_path}")
     
     # --- Recall Tests ---
@@ -166,7 +170,7 @@ def run_suite(config_path, output_format='human', input_csv=None, extra_csv_in=N
         if filter_i32v is not None: recall_filters['i32v'] = filter_i32v
         if filter_f32v is not None: recall_filters['f32v'] = filter_f32v
         if filter_str is not None: recall_filters['str'] = filter_str
-        _recall_step(config, threads, seed, number, recall_filters, all_stats)
+        _recall_step(config, threads, seed, number, recall_filters, all_stats, enable_force_recall=enable_force_recall)
     else:
         print("\n--- Skipping Recall Tests ---")
 
@@ -213,6 +217,8 @@ def main():
     parser.add_argument("--dml-count", type=int, default=1000, help="Total number of DML operations (insert, update, delete, mix).")
     parser.add_argument("--dml-batch-size", type=int, default=1000, help="Batch size for DML operations.")
     parser.add_argument("--dml-ratios", type=str, default="1,8,1", help="Mix ratios for DML (Insert,Update,Delete, e.g., '1,8,1').")
+    parser.add_argument("--skip-force-recall", action="store_true", help="Skip recall test with 'force' mode.")
+    parser.add_argument("--enable-force-recall", action="store_true", help="Enable recall test with 'force' mode (default is false).")
     args = parser.parse_args()
 
     run_suite(config_path=args.config, 
@@ -223,6 +229,7 @@ def main():
               skip_append=args.skip_append, 
               skip_recall=args.skip_recall,
               skip_dml=args.skip_dml,
+              enable_force_recall=args.enable_force_recall,
               threads=args.threads, 
               seed=args.seed, 
               number=args.number, 

@@ -136,6 +136,27 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
 
     gen = None
     agen = None
+    
+    model_load_time_s = 0
+
+    # --- Warm-up Query Acquisition ---
+    # Create a temporary Generator to get a random warm-up query without affecting the main data stream
+    temp_gen = Generator(config, seed=seed)
+    # Generate a random vector for warm-up. Dimension comes from config.
+    dim = config['dimension']
+    warmup_vector = np.random.RandomState(seed).rand(1, dim).astype(np.float32)[0].tolist()
+    warmup_query_data = {'id': -1, 'vector': warmup_vector, 'i32v': 0, 'f32v': 0.0, 'str': ''}
+
+    print("Executing warm-up query...")
+    warmup_start_time = time.time()
+    # search_worker needs dataset, start, end. So we pass a list with one item. No filters for warm-up.
+    _, _, _, _ = search_worker(config, mode, [warmup_query_data], 0, 1, None) 
+    warmup_end_time = time.time()
+    model_load_time_s = warmup_end_time - warmup_start_time
+    print(f"Model warm-up query took {model_load_time_s:.4f} s")
+    
+    # --- End Warm-up Query Acquisition ---
+
     if not csv_files: # Only use AsyncGenerator if no CSV files are provided
         gen = Generator(config, seed=seed)
         if start_id > 0:
@@ -291,7 +312,8 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
         "recall_rate": recall_rate,
         "qps": qps,
         "avg_latency_ms": avg_latency,
-        "total_search_wall_time_s": total_search_wall_time
+        "total_search_wall_time_s": total_search_wall_time,
+        "model_load_time_s": model_load_time_s
     }
 
 def main():
