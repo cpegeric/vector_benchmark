@@ -30,6 +30,8 @@ import random
 import threading
 import queue
 import gzip
+import multiprocessing
+import os
 
 # Seed for reproducibility
 DEFAULT_SEED = 8888
@@ -102,13 +104,9 @@ class AsyncGenerator:
     def _producer_loop(self):
         while not self.stop_event.is_set():
             try:
-                # Don't produce if queue is full (put blocks, but we check stop_event occasionally)
-                # Actually queue.put blocks, so that's fine, but if we want to exit cleanly
-                # we might want a timeout.
                 data = self.generator.gen_batch(self.chunk_size, self.current_id)
                 self.current_id += self.chunk_size
                 
-                # Put with timeout to allow checking stop_event
                 while not self.stop_event.is_set():
                     try:
                         self.queue.put(data, timeout=1)
@@ -124,12 +122,10 @@ class AsyncGenerator:
         needed = size
         
         while needed > 0:
-            # Refill local buffer from queue if empty
             if self.buffer_pos >= len(self.buffer):
                 self.buffer = self.queue.get()
                 self.buffer_pos = 0
             
-            # Take from local buffer
             available = len(self.buffer) - self.buffer_pos
             take = min(needed, available)
             
@@ -141,19 +137,41 @@ class AsyncGenerator:
 
     def close(self):
         self.stop_event.set()
-        # Drain queue
         while not self.queue.empty():
             try:
                 self.queue.get_nowait()
             except queue.Empty:
                 break
 
-
-def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=None):
+def _generate_csv_chunk(args_tuple):
+    config, output_file, seed, start_id, num_items_in_chunk, is_first_chunk = args_tuple
     gen = Generator(config, seed=seed)
     batch_size = config.get('batch_size', 1000)
     
-    # Determine total_size: prioritize num_items, then config['dataset_size']
+    if output_file.endswith('.gz'):
+        csv_fp = gzip.open(output_file, 'wt', newline='')
+    else:
+        csv_fp = open(output_file, 'w', newline='')
+    
+    with csv_fp as csvfile:
+        fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        if is_first_chunk: # Only write header for the first chunk
+            writer.writeheader()
+        
+        count = 0
+        while count < num_items_in_chunk:
+            current_batch = min(batch_size, num_items_in_chunk - count)
+            data = gen.gen_batch(current_batch, start_id + count)
+            writer.writerows(data)
+            count += current_batch
+            
+    return output_file
+
+def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=None, num_processes=1):
+    batch_size = config.get('batch_size', 1000)
+    
     if num_items is not None:
         total_size = num_items
     elif 'dataset_size' in config:
@@ -162,28 +180,79 @@ def generate_csv(config, output_file, seed=DEFAULT_SEED, start_id=0, num_items=N
         print("Error: 'dataset_size' not found in config and no --number specified.", file=sys.stderr)
         sys.exit(1)
     
-    print(f"Generating {total_size} rows to {output_file} with seed {seed} starting from ID {start_id}...")
-    
-    # Open the file, gzipped if the extension is .gz
-    if output_file.endswith('.gz'):
-        csv_fp = gzip.open(output_file, 'wt', newline='')
-    else:
-        csv_fp = open(output_file, 'w', newline='')
+    print(f"Generating {total_size} rows to {output_file} with seed {seed} starting from ID {start_id} using {num_processes} processes...")
 
-    with csv_fp as csvfile:
-        fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
+    if num_processes > 1:
+        temp_dir = os.path.dirname(output_file)
+        if not temp_dir:
+            temp_dir = '.'
+        temp_prefix = os.path.join(temp_dir, f"temp_gen_{os.getpid()}_")
+        temp_csv_files = []
+
+        items_per_process = total_size // num_processes
+        remainder = total_size % num_processes
+
+        pool_args = []
+        current_global_id = start_id
+        for i in range(num_processes):
+            chunk_size = items_per_process + (1 if i < remainder else 0)
+            if chunk_size == 0:
+                continue
+            
+            temp_csv_file = f"{temp_prefix}{i}.csv"
+            if output_file.endswith('.gz'):
+                temp_csv_file += '.gz'
+            temp_csv_files.append(temp_csv_file)
+            
+            pool_args.append((config, temp_csv_file, seed + i * 100, current_global_id, chunk_size, i == 0))
+            current_global_id += chunk_size
         
-        count = 0
-        while count < total_size:
-            current_batch = min(batch_size, total_size - count)
-            data = gen.gen_batch(current_batch, start_id + count)
-            writer.writerows(data)
-            count += current_batch
-            if count % 10000 == 0:
-                print(f"{count} rows written...")
-                
+        with multiprocessing.Pool(processes=num_processes) as pool:
+            generated_temp_files = pool.map(_generate_csv_chunk, pool_args)
+
+        if output_file.endswith('.gz'):
+            with gzip.open(output_file, 'wt', newline='') as outfile:
+                for idx, fname in enumerate(generated_temp_files):
+                    with gzip.open(fname, 'rt', newline='') as infile:
+                        for line_idx, line in enumerate(infile):
+                            if idx > 0 and line_idx == 0:
+                                continue
+                            outfile.write(line)
+        else:
+            with open(output_file, 'w', newline='') as outfile:
+                for idx, fname in enumerate(generated_temp_files):
+                    with open(fname, 'r', newline='') as infile:
+                        for line_idx, line in enumerate(infile):
+                            if idx > 0 and line_idx == 0:
+                                continue
+                            outfile.write(line)
+        
+        for fname in temp_csv_files:
+            os.remove(fname)
+            print(f"Cleaned up temporary file: {fname}")
+
+    else: # Sequential generation (existing logic)
+        gen = Generator(config, seed=seed)
+        
+        if output_file.endswith('.gz'):
+            csv_fp = gzip.open(output_file, 'wt', newline='')
+        else:
+            csv_fp = open(output_file, 'w', newline='')
+
+        with csv_fp as csvfile:
+            fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            count = 0
+            while count < total_size:
+                current_batch = min(batch_size, total_size - count)
+                data = gen.gen_batch(current_batch, start_id + count)
+                writer.writerows(data)
+                count += current_batch
+                if count % 10000 == 0:
+                    print(f"{count} rows written...")
+                    
     print(f"Finished generating {total_size} rows.")
 
 def fvecs_read(filename, c_contiguous=True):
@@ -259,6 +328,7 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--config", help="Path to configuration file")
     parser.add_argument("-o", "--output", help="Output CSV file path")
     parser.add_argument("-n", "--number", type=int, help="Number of items to generate (overrides dataset_size in config for generate_csv)")
+    parser.add_argument("-p", "--processes", type=int, default=1, help="Number of parallel processes for CSV generation")
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="Random seed")
     parser.add_argument("--start-id", type=int, default=0, help="Starting ID for the dataset")
     parser.add_argument("--fvecs", help="Path to .fvecs file to convert to CSV")
@@ -285,7 +355,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.output:
-        generate_csv(config, args.output, args.seed, args.start_id, num_items=args.number)
+        generate_csv(config, args.output, args.seed, args.start_id, num_items=args.number, num_processes=args.processes)
     else:
         # If no output file, just print a sample batch
         gen = Generator(config, seed=args.seed)
