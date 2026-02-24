@@ -4,14 +4,17 @@ A comprehensive benchmarking toolset for vector databases (optimized for MatrixO
 
 ## Features
 
-- **Reproducible Data**: Deterministic data generation using a base seed with independent random states for each column (`vector`, `i32v`, `f32v`, `str`).
-- **Parallel CSV Generation**: Accelerate dataset creation with the `-p` option for `gen.py`.
-- **`.fvecs` Support**: Convert vector datasets from the standard `.fvecs` format into the benchmark's CSV format.
-- **Flexible Indexing**: Supports HNSW and IVFflat with configurable parameters via JSON.
-- **High-Performance Loading**: Uses `LOAD DATA INFILE` for rapid CSV ingestion, including support for gzipped CSV files.
-- **Advanced Search**: Benchmarks parallel search with support for pre-filtering (dynamic metadata conditions) and model warm-up time reporting.
-- **Mixed Workloads**: Simulates real-world traffic with configurable ratios for Insert, Update, and Delete operations.
-- **Orchestrated Benchmarking**: A Python-based runner (`run_benchmark.py`) for comprehensive and customizable test suites.
+-   **Reproducible Data**: Deterministic data generation using a base seed with independent random states for each column (`vector`, `i32v`, `f32v`, `str`).
+-   **Parallel CSV Generation**: Accelerate dataset creation with the `-p` option for `gen.py`.
+-   **Chunked Data Handling**: New `--prefix` option in `gen.py`, `create.py`, `recall.py`, and `run_benchmark.py` for generating and consuming data in multiple chunked files.
+-   **Automatic Directory Creation**: `gen.py` now automatically creates output directories if they don't exist.
+-   **Improved Recall Accuracy**: Fixed floating-point precision issue in `recall.py` when reading vectors from CSV, ensuring accurate recall rate calculation.
+-   **`.fvecs` Support**: Convert vector datasets from the standard `.fvecs` format into the benchmark's CSV format.
+-   **Flexible Indexing**: Supports HNSW and IVFflat with configurable parameters via JSON.
+-   **High-Performance Loading**: Uses `LOAD DATA INFILE` for rapid CSV ingestion, including support for gzipped CSV files.
+-   **Advanced Search**: Benchmarks parallel search with support for pre-filtering (dynamic metadata conditions) and model warm-up time reporting.
+-   **Mixed Workloads**: Simulates real-world traffic with configurable ratios for Insert, Update, and Delete operations.
+-   **Orchestrated Benchmarking**: A Python-based runner (`run_benchmark.py`) for comprehensive and customizable test suites.
 
 ## Prerequisites
 
@@ -69,8 +72,12 @@ python3 gen.py -f cfg.json -o dataset.csv -s 8888
 # Generate 500 rows, overriding dataset_size from cfg.json
 python3 gen.py -f cfg.json -o dataset_small.csv -n 500
 
-# Generate 10k rows in parallel using 4 processes
+# Generate 10k rows in parallel using 4 processes, outputting to a single merged file
 python3 gen.py -f cfg.json -o dataset_parallel.csv -s 8888 -p 4
+
+# Generate 10k rows in parallel using 4 processes, outputting to multiple chunked files
+# (e.g., my_data0.csv, my_data1.csv, etc. without merging)
+python3 gen.py -f cfg.json --prefix my_data -s 8888 -p 4
 
 # Generate extra data starting from a specific ID to avoid duplicates
 python3 gen.py -f cfg.json -o extra_data.csv --start-id 10001
@@ -88,6 +95,9 @@ python3 create.py -f cfg.json -i dataset.csv
 # Load multiple CSV files at once
 python3 create.py -f cfg.json -i dataset_part1.csv -i dataset_part2.csv
 
+# Load multiple CSV files by specifying a common prefix (e.g., my_data0.csv, my_data1.csv)
+python3 create.py -f cfg.json --prefix my_data
+
 # Asynchronous Mode (Create Index -> Insert)
 python3 create.py -f cfg.json -a -i dataset.csv
 
@@ -100,6 +110,9 @@ Measure search performance. Data can be generated in blocks on-the-fly or read f
 ```bash
 # Standard k-NN Search with 8 threads (data generated on-the-fly)
 python3 recall.py -f cfg.json -m normal -t 8
+
+# Standard k-NN Search using data from multiple CSV files specified by prefix
+python3 recall.py -f cfg.json -m normal -t 8 --prefix my_data
 
 # Pre-filtering Search (WHERE i32v < 100 AND strv = 'abc')
 python3 recall.py -f cfg.json -m pre -t 4 --i32v 100 --str "abc"
@@ -142,6 +155,10 @@ python3 run_benchmark.py -c cfg/ivfflat.json \
                          --extra-csv data/my_extra.csv \
                          --skip-create --skip-dml -o csv
 
+# Example: Generate base data with a prefix and 2 processes, then run the suite
+python3 run_benchmark.py -c cfg/hnsw.json \
+                         --gen-prefix data/my_gen_chunks --gen-processes 2
+
 # Example: Customize recall tests and enable force mode
 python3 run_benchmark.py -c cfg/hnsw.json \
                          -t 8 -s 9999 -n 500 \
@@ -152,12 +169,15 @@ python3 run_benchmark.py -c cfg/hnsw.json \
 
 -   `-c CONFIG`, `--config CONFIG`: Path to configuration file (required).
 -   `-o {human,csv}`, `--output {human,csv}`: Output format (default: `human`).
--   `--input-csv INPUT_CSV`: Path to an existing base CSV file to use. Skips generation if `--skip-create` is active.
+-   `--input-csv INPUT_CSV`: Path to an existing base CSV file(s) to use. Skips generation if `--skip-create` is active. Can be specified multiple times.
+-   `--prefix PREFIX`: Input file prefix. Files matching this prefix will be added to the input list (for `create.py`, `recall.py`).
 -   `--extra-csv EXTRA_CSV`: Path to an existing extra CSV file for DML tests. Skips generation if `--skip-create` is active and `--skip-append` is false.
--   `--skip-create`: Skip data generation and table creation. Requires `--input-csv` and optionally `--extra-csv` if DML append is run.
+-   `--skip-create`: Skip data generation and table creation. Requires `--input-csv` or `--prefix` (and optionally `--extra-csv`) if DML append is run.
 -   `--skip-append`: Skip the DML append test.
 -   `--skip-recall`: Skip all recall tests.
 -   `--skip-dml`: Skip all DML tests.
+-   `--gen-prefix GEN_PREFIX`: Prefix for generating chunked data files using `gen.py`. When specified, `gen.py` will create multiple files (e.g., `prefix0.csv`, `prefix1.csv`) if `gen-processes > 1`.
+-   `--gen-processes GEN_PROCESSES`: Number of parallel processes for data generation when using `--gen-prefix`.
 -   `--enable-force-recall`: Enable recall test with 'force' mode (default is false).
 -   `-t THREADS`, `--threads THREADS`: Number of threads for recall tests (default: `4`).
 -   `-s SEED`, `--seed SEED`: Random seed for recall tests and generated data (default: `8888`).
