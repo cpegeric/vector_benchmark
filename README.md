@@ -111,6 +111,9 @@ Measure search performance. Data can be generated in blocks on-the-fly or read f
 # Standard k-NN Search with 8 threads (data generated on-the-fly)
 python3 recall.py -f cfg.json -m normal -t 8
 
+# Test recall on the first 1000 vectors from the dataset (generated on-the-fly)
+python3 recall.py -f cfg.json -m normal -t 8 -n 1000
+
 # Standard k-NN Search using data from multiple CSV files specified by prefix
 python3 recall.py -f cfg.json -m normal -t 8 --prefix my_data
 
