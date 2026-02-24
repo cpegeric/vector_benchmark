@@ -134,6 +134,7 @@ def recreate_index(config, async_mode=False):
 
     except Exception as e:
         print(f"Error during index recreation: {e}", file=sys.stderr)
+        raise # Print and then re-raise
     finally:
         if conn:
             conn.close()
@@ -223,9 +224,11 @@ def setup_database(config, csv_files=None, seed=8888, async_mode=False):
                 create_index(cursor, config, async_mode=False)
                 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", file=sys.stderr) # Ensure error is printed to stderr
+        raise # Print and then re-raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def main():
     parser = argparse.ArgumentParser(description="Create table and index")

@@ -206,10 +206,10 @@ def run_mix(config, total_ops, ratios, batch_size=1000, seed=8888):
     try:
         r_parts = [float(x) for x in ratios.split(',')]
         if len(r_parts) != 3:
-            raise ValueError
-    except:
-        print("Error: ratios must be 3 comma-separated numbers (e.g. 1,8,1)")
-        sys.exit(1)
+            raise ValueError("Ratios must be 3 comma-separated numbers (e.g. 1,8,1).")
+    except Exception as e:
+        print(f"Error parsing ratios: {e}", file=sys.stderr)
+        raise # Re-raise the exception
         
     total_weight = sum(r_parts)
     r_insert = r_parts[0] / total_weight

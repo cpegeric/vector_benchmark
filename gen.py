@@ -176,7 +176,8 @@ def generate_csv(config, output_file=None, output_prefix=None, seed=DEFAULT_SEED
         total_size = config['dataset_size']
     else:
         print("Error: 'dataset_size' not found in config and no --number specified.", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError("Missing 'dataset_size' in config and no --number specified.") # Print and then re-raise
+
 
     # Determine the base directory for output and create it if it doesn't exist
     target_dir = None
@@ -384,24 +385,24 @@ if __name__ == "__main__":
     if args.fvecs:
         if args.prefix:
             print("Error: --prefix is not supported with --fvecs conversion.", file=sys.stderr)
-            sys.exit(1)
+            raise ValueError("--prefix is not supported with --fvecs conversion.")
         if not args.output:
-            print("Error: --output is required when using --fvecs")
-            sys.exit(1)
+            print("Error: --output is required when using --fvecs", file=sys.stderr)
+            raise ValueError("--output is required when using --fvecs")
         convert_fvecs_to_csv(args.fvecs, args.output, args.seed, args.start_id, compress_level=args.compress_level)
         sys.exit(0)
 
     # The rest of the script requires config
     if not args.config:
-        print("Error: --config is required for data generation")
-        sys.exit(1)
+        print("Error: --config is required for data generation", file=sys.stderr)
+        raise ValueError("--config is required for data generation")
 
     try:
         with open(args.config, 'r') as f:
             config = json.load(f)
     except Exception as e:
-        print(f"Error reading config file: {e}")
-        sys.exit(1)
+        print(f"Error reading config file: {e}", file=sys.stderr)
+        raise # Re-raise the exception
 
     if args.output or args.prefix:
         generate_csv(config, output_file=args.output, output_prefix=args.prefix, seed=args.seed, start_id=args.start_id, num_items=args.number, num_processes=args.processes, compress_level=args.compress_level)
