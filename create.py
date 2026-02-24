@@ -61,6 +61,14 @@ def drop_table(cursor, config):
     print(f"Executing: {sql}")
     cursor.execute(sql)
 
+def drop_index(cursor, config):
+    tbl = config['table']
+    index_cfg = config.get('index', {})
+    idx_name = index_cfg.get('name', 'myidx')
+    sql = f"DROP INDEX IF EXISTS `{idx_name}` ON `{tbl}`"
+    print(f"Executing: {sql}")
+    cursor.execute(sql)
+
 def create_index(cursor, config, async_mode=False):
     tbl = config['table']
     index_cfg = config.get('index', {})
@@ -103,6 +111,32 @@ def create_index(cursor, config, async_mode=False):
     cursor.execute(sql)
     end = time.time()
     print(f"Create index finished in {end - start:.4f} seconds")
+
+def recreate_index(config, async_mode=False):
+    """Runs DROP INDEX and CREATE INDEX on the specified table."""
+    conn = get_db_connection(config, use_db=False)
+    try:
+        with conn.cursor() as cursor:
+            dbname = config['database']
+            # Ensure database exists and use it
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {dbname}")
+            cursor.execute(f"USE {dbname}")
+            print(f"Using database '{dbname}'.")
+
+            # Set environment
+            set_env(cursor, config)
+
+            # Drop existing index
+            drop_index(cursor, config)
+            
+            # Create new index
+            create_index(cursor, config, async_mode=async_mode) # Pass async_mode
+
+    except Exception as e:
+        print(f"Error during index recreation: {e}", file=sys.stderr)
+    finally:
+        if conn:
+            conn.close()
 
 def insert_data(cursor, config, csv_files=None, seed=8888):
     tbl = config['table']
@@ -200,12 +234,17 @@ def main():
     parser.add_argument("--prefix", help="Input file prefix. Files matching this prefix will be added to the input list.")
     parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed for stream generation")
     parser.add_argument("-a", "--async_mode", action="store_true", help="Asynchronous mode")
+    parser.add_argument("--recreate", action="store_true", help="Drop and re-create index without affecting the table data.")
     
     args = parser.parse_args()
     
     with open(args.config, 'r') as f:
         config = json.load(f)
 
+    if args.recreate:
+        recreate_index(config, async_mode=args.async_mode)
+        sys.exit(0)
+    
     csv_files = args.input if args.input else []
     if args.prefix:
         directory = os.path.dirname(args.prefix)

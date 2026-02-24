@@ -4,7 +4,7 @@ import os
 import csv
 import sys
 from gen import generate_csv
-from create import setup_database
+from create import setup_database, recreate_index
 from recall import run_recall_test
 from dml import run_insert, run_update, run_delete, run_append_csv, run_mix
 
@@ -44,13 +44,15 @@ def _extra_csv_step(config, extra_csv_in, skip_create, run_dml_append_test, seed
     
     return extra_csv_path
 
-def _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix=None, gen_processes=1):
+def _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix=None, gen_processes=1, recreate_index=False, async_mode=False):
     """
     Handles data generation for base dataset and database setup.
+    If recreate_index is True and skip_create is False, it will drop and recreate the index after data handling.
     Returns base_csv_paths used for subsequent steps.
     """
     base_csv_paths = input_csvs
     
+    # --- Data Generation/Validation ---
     if skip_create:
         print("\n--- Skipping Data Generation and Table Setup ---")
         if not base_csv_paths and not gen_prefix:
@@ -80,10 +82,18 @@ def _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix=N
         else:
             print(f"Using provided base CSV files: {base_csv_paths}")
         
-        # === Step 2: Setup Table and Index ===
-        print("\n--- Step 2: Setup Table and Index ---")
-        setup_database(config, csv_files=base_csv_paths)
-    
+        # === Step 2: Database Setup or Index Recreation ===
+        print("\n--- Step 2: Database Setup or Index Recreation ---")
+        if recreate_index:
+            print("\n--- Running Index Recreation (DROP and CREATE INDEX) ---")
+            try:
+                recreate_index(config, async_mode=async_mode) # Call recreate_index from create.py
+            except Exception as e:
+                print(f"Error during index recreation: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            setup_database(config, csv_files=base_csv_paths, async_mode=async_mode)
+            
     return base_csv_paths
 
 def _recall_step(config, threads, seed, number, recall_filters, all_stats, enable_force_recall=False, query_csv_files=None):
@@ -134,7 +144,7 @@ def _dml_step(config, extra_csv_path, run_dml_append_test, dml_count, dml_batch_
     mix_stats['test_name'] = 'dml_mix'
     all_stats.append(mix_stats)
 
-def run_suite(config_path, output_format='human', input_csvs=None, extra_csv_in=None, skip_create=False, skip_append=False, skip_recall=False, skip_dml=False, gen_prefix=None, gen_processes=1, enable_force_recall=False, threads=4, seed=8888, number=100, filter_i32v=None, filter_f32v=None, filter_str=None, dml_count=1000, dml_batch_size=1000, dml_ratios="1,8,1"):
+def run_suite(config_path, output_format='human', input_csvs=None, extra_csv_in=None, skip_create=False, skip_append=False, skip_recall=False, skip_dml=False, gen_prefix=None, gen_processes=1, recreate_index=False, async_mode=False, enable_force_recall=False, threads=4, seed=8888, number=100, filter_i32v=None, filter_f32v=None, filter_str=None, dml_count=1000, dml_batch_size=1000, dml_ratios="1,8,1"):
     """
     Orchestrates the full benchmark suite execution.
     """
@@ -152,7 +162,7 @@ def run_suite(config_path, output_format='human', input_csvs=None, extra_csv_in=
 
     skip_dml_append = skip_append or skip_dml
     
-    base_csv_paths = _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix, gen_processes)
+    base_csv_paths = _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix, gen_processes, recreate_index=recreate_index, async_mode=async_mode)
     extra_csv_path = _extra_csv_step(config, extra_csv_in, skip_create, not skip_dml_append, seed, temp_files)
     
     # --- Recall Tests ---
@@ -202,6 +212,8 @@ def main():
     parser.add_argument("--skip-dml", action="store_true", help="Skip all DML tests.")
     parser.add_argument("--gen-prefix", help="Prefix for generating chunked data files.")
     parser.add_argument("--gen-processes", type=int, default=1, help="Number of processes for data generation.")
+    parser.add_argument("--recreate", action="store_true", help="Drop and re-create index without affecting the table data.")
+    parser.add_argument("-a", "--async_mode", action="store_true", help="Asynchronous mode for index creation.")
     parser.add_argument("-t", "--threads", type=int, default=4, help="Number of threads for recall tests")
     parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed for recall tests and generated data.")
     parser.add_argument("-n", "--number", type=int, default=100, help="Number of vectors for recall tests (overrides config's dataset_size for recall).")
@@ -248,6 +260,8 @@ def main():
               skip_dml=args.skip_dml,
               gen_prefix=args.gen_prefix,
               gen_processes=args.gen_processes,
+              recreate_index=args.recreate,
+              async_mode=args.async_mode,
               enable_force_recall=args.enable_force_recall,
               threads=args.threads, 
               seed=args.seed, 
