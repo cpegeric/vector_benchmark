@@ -178,6 +178,17 @@ def generate_csv(config, output_file=None, output_prefix=None, seed=DEFAULT_SEED
         print("Error: 'dataset_size' not found in config and no --number specified.", file=sys.stderr)
         sys.exit(1)
 
+    # Determine the base directory for output and create it if it doesn't exist
+    target_dir = None
+    if output_file:
+        target_dir = os.path.dirname(output_file)
+    elif output_prefix:
+        target_dir = os.path.dirname(output_prefix)
+    
+    if target_dir and not os.path.exists(target_dir):
+        os.makedirs(target_dir, exist_ok=True)
+        print(f"Created output directory: {target_dir}")
+
     op_target = output_prefix if output_prefix else output_file
     print(f"Generating {total_size} rows to '{op_target}' with seed {seed} starting from ID {start_id} using {num_processes} processes...")
 
@@ -213,7 +224,7 @@ def generate_csv(config, output_file=None, output_prefix=None, seed=DEFAULT_SEED
                 temp_csv_files.append(temp_csv_file)
                 process_output_file = temp_csv_file
             
-            pool_args.append((config, process_output_file, seed + i * 100, current_global_id, chunk_size, i == 0, compress_level))
+            pool_args.append((config, process_output_file, seed + i * 100, current_global_id, chunk_size, (i == 0) or multi_file_no_merge, compress_level))
             current_global_id += chunk_size
         
         with multiprocessing.Pool(processes=num_processes) as pool:
@@ -296,6 +307,11 @@ def convert_fvecs_to_csv(fvecs_path, output_file, seed=DEFAULT_SEED, start_id=0,
     vectors = fvecs_read(fvecs_path)
     total_size = len(vectors)
     print(f"Found {total_size} vectors. Converting to CSV at {output_file}...")
+
+    output_dir = os.path.dirname(output_file)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"Created output directory: {output_dir}")
 
     # Initialize random states for other columns
     rss = [
