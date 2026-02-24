@@ -155,6 +155,12 @@ python3 run_benchmark.py -c cfg/ivfflat.json \
                          --extra-csv data/my_extra.csv \
                          --skip-create --skip-dml -o csv
 
+# Example: Run a suite, skipping create and DML, using pre-existing chunked files by prefix
+# (e.g., my_preexisting_chunks0.csv, my_preexisting_chunks1.csv)
+python3 run_benchmark.py -c cfg/ivfflat.json \
+                         --prefix data/my_preexisting_chunks --extra-csv data/my_extra.csv \
+                         --skip-create --skip-dml -o csv
+
 # Example: Generate base data with a prefix and 2 processes, then run the suite
 python3 run_benchmark.py -c cfg/hnsw.json \
                          --gen-prefix data/my_gen_chunks --gen-processes 2
