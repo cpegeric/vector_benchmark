@@ -227,13 +227,7 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
                         if int(row['id']) < start_id:
                             continue
                             
-                        # Parse vector
-                        try:
-                            # Attempt JSON parse first (faster)
-                            row['vector'] = json.loads(row['vector'])
-                        except:
-                            # Fallback to ast.literal_eval
-                            row['vector'] = ast.literal_eval(row['vector'])
+                        # The vector is already a string in the required format, no need to parse.
                             
                         # Convert types
                         row['id'] = int(row['id'])
