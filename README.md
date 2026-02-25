@@ -119,6 +119,11 @@ python3 recall.py -f cfg.json -m normal -t 8 --prefix my_data
 
 # Pre-filtering Search (WHERE i32v < 100 AND strv = 'abc')
 python3 recall.py -f cfg.json -m pre -t 4 --i32v 100 --str "abc"
+
+# Run EXPLAIN ANALYZE on a single query and print the execution plan
+python3 recall.py -f cfg.json -m normal --explain
+# With filters:
+python3 recall.py -f cfg.json -m pre --i32v 100 --str "abc" --explain
 ```
 
 ### 4. DML Benchmarks (`dml.py`)
