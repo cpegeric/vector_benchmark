@@ -44,10 +44,10 @@ def _extra_csv_step(config, extra_csv_in, skip_create, run_dml_append_test, seed
     
     return extra_csv_path
 
-def _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix=None, gen_processes=1, recreate_index=False, async_mode=False):
+def _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix=None, gen_processes=1, should_recreate_index=False, async_mode=False):
     """
     Handles data generation for base dataset and database setup.
-    If recreate_index is True and skip_create is False, it will drop and recreate the index after data handling.
+    If should_recreate_index is True and skip_create is False, it will drop and recreate the index after data handling.
     Returns base_csv_paths used for subsequent steps.
     """
     base_csv_paths = input_csvs
@@ -84,7 +84,7 @@ def _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix=N
         
         # === Step 2: Database Setup or Index Recreation ===
         print("\n--- Step 2: Database Setup or Index Recreation ---")
-        if recreate_index:
+        if should_recreate_index:
             print("\n--- Running Index Recreation (DROP and CREATE INDEX) ---")
             try:
                 recreate_index(config, async_mode=async_mode) # Call recreate_index from create.py
@@ -162,7 +162,7 @@ def run_suite(config_path, output_format='human', input_csvs=None, extra_csv_in=
 
     skip_dml_append = skip_append or skip_dml
     
-    base_csv_paths = _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix, gen_processes, recreate_index=recreate_index, async_mode=async_mode)
+    base_csv_paths = _create_step(config, input_csvs, skip_create, seed, temp_files, gen_prefix, gen_processes, should_recreate_index=recreate_index, async_mode=async_mode)
     extra_csv_path = _extra_csv_step(config, extra_csv_in, skip_create, not skip_dml_append, seed, temp_files)
     
     # --- Recall Tests ---
