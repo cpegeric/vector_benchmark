@@ -124,6 +124,12 @@ python3 recall.py -f cfg.json -m pre -t 4 --i32v 100 --str "abc"
 python3 recall.py -f cfg.json -m normal --explain
 # With filters:
 python3 recall.py -f cfg.json -m pre --i32v 100 --str "abc" --explain
+
+# Run EXPLAIN VERBOSE on a single query and print the verbose execution plan
+python3 recall.py -f cfg.json -m normal --explain-verbose
+# With filters:
+python3 recall.py -f cfg.json -m pre --i32v 100 --str "abc" --explain-verbose
+
 ```
 
 ### 4. DML Benchmarks (`dml.py`)

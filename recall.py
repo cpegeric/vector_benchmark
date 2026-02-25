@@ -331,11 +331,12 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
         "model_load_time_s": model_load_time_s
     }
 
-def run_explain(config, mode, filters=None, csv_files=None, seed=8888):
+def run_explain(config, mode, filters=None, csv_files=None, seed=8888, verbose=False):
     """
-    Runs EXPLAIN ANALYZE on a single query and prints the execution plan.
+    Runs EXPLAIN ANALYZE or EXPLAIN VERBOSE on a single query and prints the execution plan.
     """
-    print("--- Running EXPLAIN ANALYYZE ---")
+    explain_type = "EXPLAIN VERBOSE" if verbose else "EXPLAIN ANALYZE"
+    print(f"--- Running {explain_type} ---")
 
     # 1. Get a single query vector
     query_data = None
@@ -356,7 +357,7 @@ def run_explain(config, mode, filters=None, csv_files=None, seed=8888):
 
     # 2. Construct the SQL query
     sql, _ = construct_query(config, mode, query_data['vector'], filters)
-    explain_sql = f"EXPLAIN ANALYZE {sql}"
+    explain_sql = f"{explain_type} {sql}"
     
     print(f"Executing: {explain_sql}")
 
@@ -390,6 +391,7 @@ def main():
     parser.add_argument("--f32v", type=float, help="Filter by f32v value")
     parser.add_argument("--str", type=str, help="Filter by strv value")
     parser.add_argument("--explain", action="store_true", help="Run EXPLAIN ANALYZE on a single query and print the plan.")
+    parser.add_argument("--explain-verbose", action="store_true", help="Run EXPLAIN VERBOSE on a single query and print the verbose plan.")
     
     args = parser.parse_args()
     
@@ -425,8 +427,8 @@ def main():
     if args.f32v is not None: filters['f32v'] = args.f32v
     if args.str is not None: filters['str'] = args.str
 
-    if args.explain:
-        run_explain(config, args.mode, filters=filters, csv_files=final_csv_files, seed=args.seed)
+    if args.explain or args.explain_verbose:
+        run_explain(config, args.mode, filters=filters, csv_files=final_csv_files, seed=args.seed, verbose=args.explain_verbose)
         sys.exit(0)
         
     stats = run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_files=final_csv_files, start_id=args.start_id)
