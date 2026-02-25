@@ -165,16 +165,16 @@ python3 run_benchmark.py -f cfg/ivfflat.json \
 
 # Example: Run a suite, skipping create and DML, using pre-existing chunked files by prefix
 # (e.g., my_preexisting_chunks0.csv, my_preexisting_chunks1.csv)
-python3 run_benchmark.py -c cfg/ivfflat.json \
+python3 run_benchmark.py -f cfg/ivfflat.json \
                          --prefix data/my_preexisting_chunks --extra-csv data/my_extra.csv \
                          --skip-create --skip-dml -o csv
 
 # Example: Generate base data with a prefix and 2 processes, then run the suite
-python3 run_benchmark.py -c cfg/hnsw.json \
+python3 run_benchmark.py -f cfg/hnsw.json \
                          --gen-prefix data/my_gen_chunks --gen-processes 2
 
 # Example: Customize recall tests and enable force mode
-python3 run_benchmark.py -c cfg/hnsw.json \
+python3 run_benchmark.py -f cfg/hnsw.json \
                          -t 8 -s 9999 -n 500 \
                          --i32v 750 --enable-force-recall
 ```
@@ -221,9 +221,9 @@ The primary way to run comprehensive test suites is now via `run_benchmark.py`. 
 
 ```bash
 # Run a full IVFflat suite using the new Python orchestrator
-python3 run_benchmark.py -c cfg/ivfflat.json
+python3 run_benchmark.py -f cfg/ivfflat.json
 
 # Run an IVFflat suite, skipping creation and DML ops (assumes data is already in DB)
-python3 run_benchmark.py -c cfg/ivfflat.json --skip-create --skip-dml \
+python3 run_benchmark.py -f cfg/ivfflat.json --skip-create --skip-dml \
                          --input-csv data/test_data.csv --extra-csv data/extra_data.csv
 ```
