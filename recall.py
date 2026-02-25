@@ -34,6 +34,7 @@ import csv
 import ast
 import gzip
 import os
+import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from gen import Generator, AsyncGenerator
 from db import get_db_connection, set_env
@@ -181,37 +182,8 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
     
     # --- CSV reading setup for multiple files ---
     csv_files_iterator = iter(csv_files) if csv_files else None
-    current_csv_f = None
-    current_csv_reader = None
-
-    def get_next_csv_row():
-        nonlocal current_csv_f, current_csv_reader, csv_files_iterator
-        while True:
-            if current_csv_reader:
-                try:
-                    return next(current_csv_reader)
-                except StopIteration:
-                    # Current file exhausted, close it and try next
-                    current_csv_f.close()
-                    current_csv_f = None
-                    current_csv_reader = None
-            
-            if csv_files_iterator:
-                try:
-                    # Open next file
-                    next_file_path = next(csv_files_iterator)
-                    if next_file_path.endswith('.gz'):
-                        current_csv_f = gzip.open(next_file_path, 'rt', newline='')
-                    else:
-                        current_csv_f = open(next_file_path, 'r', newline='')
-                    current_csv_reader = csv.DictReader(current_csv_f)
-                except StopIteration:
-                    # No more files to open
-                    csv_files_iterator = None
-                    raise # Propagate StopIteration
-            else:
-                # No files at all, or all files processed
-                raise StopIteration # Signal no more data
+    current_df_iter = None
+    row_buffer = []
 
     try:
         while processed_count < total_size:
@@ -221,24 +193,48 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
             dataset = []
             if csv_files: # Check if any CSV files were provided
                 while len(dataset) < current_batch_size:
-                    try:
-                        row = get_next_csv_row()
-                        # Skip if ID is less than start_id
-                        if int(row['id']) < start_id:
-                            continue
+                    # Fill from buffer first
+                    if row_buffer:
+                        needed = current_batch_size - len(dataset)
+                        take = row_buffer[:needed]
+                        dataset.extend(take)
+                        row_buffer = row_buffer[needed:]
+                    
+                    if len(dataset) >= current_batch_size:
+                        break
+
+                    # Fetch next chunk if buffer is empty
+                    if current_df_iter:
+                        try:
+                            df_chunk = next(current_df_iter)
                             
-                        # The vector is already a string in the required format, no need to parse.
+                            # Filter by start_id
+                            if start_id > 0:
+                                df_chunk = df_chunk[df_chunk['id'] >= start_id]
                             
-                        # Convert types
-                        row['id'] = int(row['id'])
-                        if 'i32v' in row: row['i32v'] = int(row['i32v'])
-                        if 'f32v' in row: row['f32v'] = float(row['f32v'])
-                        
-                        dataset.append(row)
-                    except StopIteration:
-                        break # No more rows from any CSV file
-                if not dataset: # If no data could be read after trying all files
-                    break
+                            if not df_chunk.empty:
+                                # Convert types explicitly to match original behavior (ensure native python types)
+                                # Although pandas types usually work, explicit conversion is safer for downstream consumers expecting int/float
+                                # However, for performance, we can rely on to_dict('records') which gives compatible types
+                                row_buffer.extend(df_chunk.to_dict('records'))
+                        except StopIteration:
+                            current_df_iter = None
+                    
+                    if not current_df_iter:
+                        if csv_files_iterator:
+                            try:
+                                next_file_path = next(csv_files_iterator)
+                                # Pandas read_csv with chunksize returns a TextFileReader
+                                current_df_iter = pd.read_csv(next_file_path, chunksize=chunk_size)
+                            except StopIteration:
+                                csv_files_iterator = None
+                                # No break here, loop will continue and check if buffer has data or exit
+                        else:
+                            break # No more files
+                
+                if not dataset and not row_buffer and not current_df_iter and not csv_files_iterator:
+                     break
+
             else:
                 # Use AsyncGenerator to get batch
                 dataset = agen.get_batch(current_batch_size)
@@ -286,8 +282,6 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received. Shutting down gracefully...")
     finally:
-        if current_csv_f:
-            current_csv_f.close()
         if agen:
             agen.close()
 
