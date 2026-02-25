@@ -201,7 +201,7 @@ def run_suite(config_path, output_format='human', input_csvs=None, extra_csv_in=
 
 def main():
     parser = argparse.ArgumentParser(description="Run benchmark suites in Python.")
-    parser.add_argument("-c", "--config", required=True, help="Path to config file for the suite (e.g., cfg/hnsw.json)")
+    parser.add_argument("-f", "--config", required=True, help="Path to config file for the suite (e.g., cfg/hnsw.json)")
     parser.add_argument("-o", "--output", choices=['human', 'csv'], default='human', help="Output format")
     parser.add_argument("--input-csv", action="append", help="Path to existing base CSV file(s) to use (skips generation if --skip-create is used). Can be specified multiple times.")
     parser.add_argument("--prefix", help="Input file prefix. Files matching this prefix will be added to the input list.")

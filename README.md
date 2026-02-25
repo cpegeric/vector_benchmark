@@ -155,10 +155,10 @@ This is the primary script to run comprehensive benchmark suites. It orchestrate
 
 ```bash
 # Example: Run a full suite with IVFflat config, human-readable output
-python3 run_benchmark.py -c cfg/ivfflat.json -o human
+python3 run_benchmark.py -f cfg/ivfflat.json -o human
 
 # Example: Run a suite, skipping create and DML, outputting CSV
-python3 run_benchmark.py -c cfg/ivfflat.json \
+python3 run_benchmark.py -f cfg/ivfflat.json \
                          --input-csv data/my_base.csv \
                          --extra-csv data/my_extra.csv \
                          --skip-create --skip-dml -o csv
@@ -181,7 +181,7 @@ python3 run_benchmark.py -c cfg/hnsw.json \
 
 **Options:**
 
--   `-c CONFIG`, `--config CONFIG`: Path to configuration file (required).
+-   `-f CONFIG`, `--config CONFIG`: Path to configuration file (required).
 -   `-o {human,csv}`, `--output {human,csv}`: Output format (default: `human`).
 -   `--input-csv INPUT_CSV`: Path to an existing base CSV file(s) to use. Skips generation if `--skip-create` is active. Can be specified multiple times.
 -   `--prefix PREFIX`: Input file prefix. Files matching this prefix will be added to the input list (for `create.py`, `recall.py`).
