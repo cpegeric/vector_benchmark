@@ -46,6 +46,41 @@ optype2distfn = {
     'vector_l2sq_ops': 'l2_distance_sq'
 }
 
+def construct_query(config, mode, query_vec, filters):
+    tbl = config['table']
+    
+    index_cfg = config.get('index', {})
+    if isinstance(index_cfg, str):
+        dist = config.get('distance', 'vector_l2_ops')
+    else:
+        dist = index_cfg.get('op_type', config.get('distance', 'vector_l2_ops'))
+    
+    op_type = optype2distfn.get(dist, 'l2_distance')
+
+    where_clause = ""
+    if filters:
+        conditions = []
+        if filters.get('i32v') is not None:
+            conditions.append(f"i32v < {filters['i32v']}")
+        if filters.get('f32v') is not None:
+            conditions.append(f"f32v < {filters['f32v']}")
+        if filters.get('str') is not None:
+            conditions.append(f"strv = '{filters['str']}'")
+            
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+
+    if mode == 'normal':
+        sql = f"SELECT id FROM {tbl} {where_clause} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1"
+    elif mode == 'pre':
+        sql = f"SELECT id FROM {tbl} {where_clause} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1 BY RANK WITH OPTION 'mode=pre'"
+    elif mode == 'post':
+        sql = f"SELECT id FROM {tbl} {where_clause} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1 BY RANK WITH OPTION 'mode=post'"
+    elif mode == 'force':
+        sql = f"SELECT id FROM {tbl} {where_clause} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1 BY RANK WITH OPTION 'mode=force'"
+    
+    return sql, op_type
+
 def search_worker(config, mode, dataset, start, end, filters=None):
     conn = get_db_connection(config)
     tbl = config['table']
@@ -97,17 +132,8 @@ def search_worker(config, mode, dataset, start, end, filters=None):
                 if is_eligible:
                     eligible += 1
                 total += 1 # Total queries executed, including non-eligible ones if they pass filters
-                # Dynamic SQL generation
-                current_where = where_clause
                 
-                if mode == 'normal':
-                    sql = f"SELECT id FROM {tbl} {current_where} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1"
-                elif mode == 'pre':
-                    sql = f"SELECT id FROM {tbl} {current_where} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1 BY RANK WITH OPTION 'mode=pre'"
-                elif mode == 'post':
-                    sql = f"SELECT id FROM {tbl} {current_where} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1 BY RANK WITH OPTION 'mode=post'"
-                elif mode == 'force':
-                    sql = f"SELECT id FROM {tbl} {current_where} ORDER BY {op_type}(embed, '{query_vec}') LIMIT 1 BY RANK WITH OPTION 'mode=force'"
+                sql, _ = construct_query(config, mode, query_vec, filters)
                 
                 cursor.execute(sql)
                 res = cursor.fetchone()
@@ -305,6 +331,49 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
         "model_load_time_s": model_load_time_s
     }
 
+def run_explain(config, mode, filters=None, csv_files=None, seed=8888):
+    """
+    Runs EXPLAIN ANALYZE on a single query and prints the execution plan.
+    """
+    print("--- Running EXPLAIN ANALYYZE ---")
+
+    # 1. Get a single query vector
+    query_data = None
+    if csv_files:
+        import pandas as pd
+        # Read just the first row from the first csv
+        df = pd.read_csv(csv_files[0], nrows=1)
+        if not df.empty:
+            query_data = df.to_dict('records')[0]
+    else:
+        # Generate one vector
+        gen = Generator(config, seed=seed)
+        query_data = gen.gen_batch(1, 0)[0]
+
+    if not query_data:
+        print("Could not get a query vector.", file=sys.stderr)
+        sys.exit(1)
+
+    # 2. Construct the SQL query
+    sql, _ = construct_query(config, mode, query_data['vector'], filters)
+    explain_sql = f"EXPLAIN ANALYZE {sql}"
+    
+    print(f"Executing: {explain_sql}")
+
+    # 3. Execute and print results
+    conn = get_db_connection(config)
+    try:
+        with conn.cursor() as cursor:
+            set_env(cursor, config)
+            cursor.execute(explain_sql)
+            result = cursor.fetchall()
+            print("\n--- Execution Plan ---")
+            for row in result:
+                print(row[0])
+            print("--------------------")
+    finally:
+        conn.close()
+
 def main():
     parser = argparse.ArgumentParser(description="Run recall test")
     parser.add_argument("-f", "--config", required=True, help="Path to config file")
@@ -320,6 +389,7 @@ def main():
     parser.add_argument("--i32v", type=int, help="Filter by i32v value")
     parser.add_argument("--f32v", type=float, help="Filter by f32v value")
     parser.add_argument("--str", type=str, help="Filter by strv value")
+    parser.add_argument("--explain", action="store_true", help="Run EXPLAIN ANALYZE on a single query and print the plan.")
     
     args = parser.parse_args()
     
@@ -354,6 +424,10 @@ def main():
     if args.i32v is not None: filters['i32v'] = args.i32v
     if args.f32v is not None: filters['f32v'] = args.f32v
     if args.str is not None: filters['str'] = args.str
+
+    if args.explain:
+        run_explain(config, args.mode, filters=filters, csv_files=final_csv_files, seed=args.seed)
+        sys.exit(0)
         
     stats = run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_files=final_csv_files, start_id=args.start_id)
 
