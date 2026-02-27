@@ -12,7 +12,7 @@
     "op_type": "vector_l2_ops"
   },
   "dimension": 1024,
-  "dataset_size": 1000000,
+  "dataset_size": 10000,
   "batch_size": 1000,
   "env": {
     "probe_limit": 3,

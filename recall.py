@@ -331,49 +331,60 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
         "model_load_time_s": model_load_time_s
     }
 
-def run_explain(config, mode, filters=None, csv_files=None, seed=8888, verbose=False):
-    """
-    Runs EXPLAIN ANALYZE or EXPLAIN VERBOSE on a single query and prints the execution plan.
-    """
-    explain_type = "EXPLAIN VERBOSE" if verbose else "EXPLAIN ANALYZE"
-    print(f"--- Running {explain_type} ---")
-
-    # 1. Get a single query vector
-    query_data = None
-    if csv_files:
-        import pandas as pd
-        # Read just the first row from the first csv
-        df = pd.read_csv(csv_files[0], nrows=1)
-        if not df.empty:
-            query_data = df.to_dict('records')[0]
-    else:
-        # Generate one vector
-        gen = Generator(config, seed=seed)
-        query_data = gen.gen_batch(1, 0)[0]
-
-    if not query_data:
-        print("Could not get a query vector.", file=sys.stderr)
-        sys.exit(1)
-
-    # 2. Construct the SQL query
-    sql, _ = construct_query(config, mode, query_data['vector'], filters)
-    explain_sql = f"{explain_type} {sql}"
-    
-    print(f"Executing: {explain_sql}")
-
-    # 3. Execute and print results
-    conn = get_db_connection(config)
+def run_explain_worker(config, mode, filters, query_data, explain_type, thread_id):
+    conn = None # Initialize conn to None
     try:
+        sql, _ = construct_query(config, mode, query_data['vector'], filters)
+        explain_sql = f"{explain_type} {sql}"
+        
+        conn = get_db_connection(config)
         with conn.cursor() as cursor:
             set_env(cursor, config)
             cursor.execute(explain_sql)
             result = cursor.fetchall()
-            print("\n--- Execution Plan ---")
+            output = [f"\n--- Execution Plan (Thread {thread_id}) ---", f"Executing: {explain_sql}"]
             for row in result:
-                print(row[0])
-            print("--------------------")
+                output.append(str(row[0])) # Ensure row[0] is converted to string for printing
+            output.append("--------------------")
+            return "\n".join(output)
+    except Exception as e:
+        return f"\n--- Error in Thread {thread_id} --- \nError: {e}\n--------------------"
     finally:
-        conn.close()
+        if conn:
+            conn.close()
+
+def run_explain(config, mode, threads=1, filters=None, csv_files=None, seed=8888, verbose=False):
+    """
+    Runs EXPLAIN ANALYZE or EXPLAIN VERBOSE on queries using multiple threads.
+    """
+    explain_type = "EXPLAIN VERBOSE" if verbose else "EXPLAIN ANALYZE"
+    print(f"--- Running {explain_type} with {threads} threads ---")
+
+    queries = []
+    if csv_files:
+        import pandas as pd
+        # Read 'threads' number of rows from the first csv, or all if fewer than 'threads'
+        df = pd.read_csv(csv_files[0], nrows=threads)
+        if not df.empty:
+            queries.extend(df.to_dict('records'))
+    else:
+        # Generate 'threads' number of unique queries
+        gen = Generator(config, seed=seed)
+        queries.extend(gen.gen_batch(threads, 0))
+
+    if not queries:
+        print("Could not get query vectors for EXPLAIN. Exiting.", file=sys.stderr)
+        sys.exit(1)
+        
+    actual_threads = len(queries)
+    if actual_threads < threads:
+        print(f"Warning: Requested {threads} threads but only found {actual_threads} queries to explain. Running with {actual_threads} threads.")
+
+    with ThreadPoolExecutor(max_workers=actual_threads) as executor:
+        futures = [executor.submit(run_explain_worker, config, mode, filters, queries[i], explain_type, i) for i in range(actual_threads)]
+        
+        for future in as_completed(futures):
+            print(future.result())
 
 def main():
     parser = argparse.ArgumentParser(description="Run recall test")
@@ -428,7 +439,7 @@ def main():
     if args.str is not None: filters['str'] = args.str
 
     if args.explain or args.explain_verbose:
-        run_explain(config, args.mode, filters=filters, csv_files=final_csv_files, seed=args.seed, verbose=args.explain_verbose)
+        run_explain(config, args.mode, threads=args.threads, filters=filters, csv_files=final_csv_files, seed=args.seed, verbose=args.explain_verbose)
         sys.exit(0)
         
     stats = run_recall_test(config, args.mode, args.threads, number=args.number, seed=args.seed, filters=filters, csv_files=final_csv_files, start_id=args.start_id)
