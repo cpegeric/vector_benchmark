@@ -96,7 +96,7 @@ def search_worker(config, mode, dataset, start, end, filters=None):
     correct = 0
     eligible = 0
     total = 0
-    start_time = time.time()
+    start_time = time.monotonic()
     
     # Construct WHERE clause from filters
     where_clause = ""
@@ -145,7 +145,7 @@ def search_worker(config, mode, dataset, start, end, filters=None):
     finally:
         conn.close()
         
-    end_time = time.time()
+    end_time = time.monotonic()
     return correct, eligible, total, end_time - start_time
 
 def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None, csv_files=None, start_id=0):
@@ -176,10 +176,10 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
     warmup_query_data = {'id': -1, 'vector': warmup_vector, 'i32v': 0, 'f32v': 0.0, 'str': ''}
 
     print("Executing warm-up query...")
-    warmup_start_time = time.time()
+    warmup_start_time = time.monotonic()
     # search_worker needs dataset, start, end. So we pass a list with one item. No filters for warm-up.
     _, _, _, _ = search_worker(config, mode, [warmup_query_data], 0, 1, None) 
-    warmup_end_time = time.time()
+    warmup_end_time = time.monotonic()
     model_load_time_s = warmup_end_time - warmup_start_time
     print(f"Model warm-up query took {model_load_time_s:.4f} s")
     
@@ -283,7 +283,7 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
                     start_idx += count
             
             # 3. Execute Search (Time Measured)
-            batch_start_time = time.time()
+            batch_start_time = time.monotonic()
             
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 futures = [executor.submit(search_worker, *args) for args in search_args]
@@ -295,7 +295,7 @@ def run_recall_test(config, mode, threads, number=None, seed=8888, filters=None,
                     total_queries += t
                     total_worker_cpu_time += elapsed
                     
-            batch_end_time = time.time()
+            batch_end_time = time.monotonic()
             
             # Accumulate the wall time spent in this batch's search phase
             total_search_wall_time += (batch_end_time - batch_start_time)

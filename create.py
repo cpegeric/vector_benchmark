@@ -107,9 +107,9 @@ def create_index(cursor, config, async_mode=False):
         """
 
     print(f"Executing: {sql}")
-    start = time.time()
+    start = time.monotonic()
     cursor.execute(sql)
-    end = time.time()
+    end = time.monotonic()
     print(f"Create index finished in {end - start:.4f} seconds")
 
 def recreate_index(config, async_mode=False):
@@ -145,7 +145,7 @@ def insert_data(cursor, config, csv_files=None, seed=8888):
     total_size = config['dataset_size']
     
     print(f"Inserting data into {tbl} (seed: {seed})...")
-    start_time = time.time()
+    start_time = time.monotonic()
     
     if csv_files:
         for csv_file in csv_files:
@@ -186,7 +186,7 @@ def insert_data(cursor, config, csv_files=None, seed=8888):
             if total_inserted % 10000 == 0:
                 print(f"Inserted {total_inserted} rows...")
 
-    end_time = time.time()
+    end_time = time.monotonic()
     print(f"Data load finished in {end_time - start_time:.4f} seconds")
 
 def setup_database(config, csv_files=None, seed=8888, async_mode=False):
