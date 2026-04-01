@@ -122,80 +122,98 @@ def run_cuvs_benchmark(args):
 
     index.start()
 
-    # 3. Load/Generate Data in Chunks and Add to Index
-    csv_files = args.input_csv if args.input_csv else []
-    if args.prefix:
-        directory = os.path.dirname(args.prefix) or '.'
-        prefix_base = os.path.basename(args.prefix)
-        try:
-            matched_files = [os.path.join(directory, f) for f in os.listdir(directory) if f.startswith(prefix_base)]
-            matched_files.sort()
-            csv_files.extend(matched_files)
-        except FileNotFoundError:
-            pass
-    
-    added_count = 0
-    query_vectors = []
-    query_ids = []
-    max_queries = args.number_queries
+    # 3. Load or Build Index
+    if args.input_dir:
+        print(f"Loading index from {args.input_dir}...")
+        index.load_dir(args.input_dir)
+        added_count = dataset_size # Assume it's fully loaded for reporting
+    else:
+        # Load/Generate Data in Chunks and Add to Index
+        csv_files = args.input_csv if args.input_csv else []
+        if args.prefix:
+            directory = os.path.dirname(args.prefix) or '.'
+            prefix_base = os.path.basename(args.prefix)
+            try:
+                matched_files = [os.path.join(directory, f) for f in os.listdir(directory) if f.startswith(prefix_base)]
+                matched_files.sort()
+                csv_files.extend(matched_files)
+            except FileNotFoundError:
+                pass
+        
+        added_count = 0
+        query_vectors = []
+        query_ids = []
+        max_queries = args.number_queries
 
-    if csv_files:
-        print(f"Adding data from CSV files in chunks of {chunk_size}...")
-        for f in csv_files:
-            if added_count >= dataset_size:
-                break
-            for df_chunk in pd.read_csv(f, chunksize=chunk_size):
+        if csv_files:
+            print(f"Adding data from CSV files in chunks of {chunk_size}...")
+            for f in csv_files:
                 if added_count >= dataset_size:
                     break
-                needed = dataset_size - added_count
-                if len(df_chunk) > needed:
-                    df_chunk = df_chunk.head(needed)
-                
-                vecs = np.array([parse_vector(v) for v in df_chunk['vector'].values], dtype=np.float32)
+                for df_chunk in pd.read_csv(f, chunksize=chunk_size):
+                    if added_count >= dataset_size:
+                        break
+                    needed = dataset_size - added_count
+                    if len(df_chunk) > needed:
+                        df_chunk = df_chunk.head(needed)
+                    
+                    vecs = np.array([parse_vector(v) for v in df_chunk['vector'].values], dtype=np.float32)
+                    
+                    # Save some queries for recall test
+                    if len(query_vectors) < max_queries:
+                        take = min(max_queries - len(query_vectors), len(vecs))
+                        query_vectors.append(vecs[:take])
+                        query_ids.append(df_chunk['id'].values[:take].astype(np.uint32))
+
+                    index.add_chunk(vecs)
+                    added_count += len(vecs)
+                    if added_count % 50000 == 0 or added_count == dataset_size:
+                        print(f"Added {added_count}/{dataset_size} vectors...")
+        else:
+            print(f"Generating and adding synthetic data in chunks of {chunk_size}...")
+            gen = Generator(config, seed=args.seed)
+            while added_count < dataset_size:
+                current_batch_size = min(chunk_size, dataset_size - added_count)
+                batch = gen.gen_batch(current_batch_size, added_count)
+                vecs = np.array([parse_vector(row['vector']) for row in batch], dtype=np.float32)
                 
                 # Save some queries for recall test
                 if len(query_vectors) < max_queries:
                     take = min(max_queries - len(query_vectors), len(vecs))
                     query_vectors.append(vecs[:take])
-                    query_ids.append(df_chunk['id'].values[:take].astype(np.uint32))
+                    query_ids.append(np.array([row['id'] for row in batch[:take]], dtype=np.uint32))
 
                 index.add_chunk(vecs)
                 added_count += len(vecs)
                 if added_count % 50000 == 0 or added_count == dataset_size:
                     print(f"Added {added_count}/{dataset_size} vectors...")
-    else:
-        print(f"Generating and adding synthetic data in chunks of {chunk_size}...")
-        gen = Generator(config, seed=args.seed)
-        while added_count < dataset_size:
-            current_batch_size = min(chunk_size, dataset_size - added_count)
-            batch = gen.gen_batch(current_batch_size, added_count)
-            vecs = np.array([parse_vector(row['vector']) for row in batch], dtype=np.float32)
-            
-            # Save some queries for recall test
-            if len(query_vectors) < max_queries:
-                take = min(max_queries - len(query_vectors), len(vecs))
-                query_vectors.append(vecs[:take])
-                query_ids.append(np.array([row['id'] for row in batch[:take]], dtype=np.uint32))
 
-            index.add_chunk(vecs)
-            added_count += len(vecs)
-            if added_count % 50000 == 0 or added_count == dataset_size:
-                print(f"Added {added_count}/{dataset_size} vectors...")
-
-    # 4. Build Index
-    print("Building index...")
-    build_start = time.monotonic()
-    index.build()
-    build_end = time.monotonic()
-    print(f"Index build took {build_end - build_start:.4f} s")
+        # 4. Build Index
+        print("Building index...")
+        build_start = time.monotonic()
+        index.build()
+        build_end = time.monotonic()
+        print(f"Index build took {build_end - build_start:.4f} s")
+        
+        # Save index if requested
+        if args.output_dir:
+            print(f"Saving index to {args.output_dir}...")
+            if not os.path.exists(args.output_dir):
+                os.makedirs(args.output_dir)
+            index.save_dir(args.output_dir)
 
     # 5. Parallel Recall Test using ThreadPoolExecutor
-    if not query_vectors:
-        print("Error: No queries collected for recall test.")
-        return
-
-    query_vectors = np.vstack(query_vectors)
-    query_ids = np.concatenate(query_ids)
+    if args.input_dir:
+        # If we loaded the index, we need to generate some queries for recall test
+        # as we didn't collect them during addition.
+        print(f"Generating {args.number_queries} queries for recall test...")
+        gen = Generator(config, seed=args.seed)
+        batch = gen.gen_batch(args.number_queries, 0)
+        query_vectors = np.array([parse_vector(row['vector']) for row in batch], dtype=np.float32)
+        query_ids = np.array([row['id'] for row in batch], dtype=np.uint32)
+    else:
+        query_vectors = np.vstack(query_vectors)
+        query_ids = np.concatenate(query_ids)
     
     n_queries = len(query_vectors)
     k = args.k
@@ -266,6 +284,8 @@ def main():
     parser.add_argument("-f", "--config", required=True, help="Path to config file")
     parser.add_argument("--index-type", choices=['cagra', 'ivfflat', 'ivfpq'], help="Index type (overrides config)")
     parser.add_argument("--qtype", choices=['fp32', 'fp16', 'int8', 'uint8'], help="Quantization type (overrides config)")
+    parser.add_argument("--input-dir", help="Directory to load index from")
+    parser.add_argument("--output-dir", help="Directory to save index to")
     parser.add_argument("-n", "--number", type=int, help="Total number of vectors to add")
     parser.add_argument("-nq", "--number-queries", type=int, default=100, help="Number of queries for recall test")
     parser.add_argument("-k", type=int, default=1, help="K for search")
