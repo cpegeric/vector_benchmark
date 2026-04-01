@@ -37,6 +37,13 @@ qtype_mapping = {
     'uint8': cuvs.Quantization.UINT8,
 }
 
+# Mapping string distribution modes to cuvs.DistributionMode
+mode_mapping = {
+    'single': cuvs.DistributionMode.SINGLE_GPU,
+    'sharded': cuvs.DistributionMode.SHARDED,
+    'replicated': cuvs.DistributionMode.REPLICATED,
+}
+
 def parse_vector(v_str):
     if isinstance(v_str, str):
         try:
@@ -89,6 +96,18 @@ def run_cuvs_benchmark(args):
     qtype_str = args.qtype or config.get('qtype', 'fp32')
     qtype = qtype_mapping.get(qtype_str.lower(), cuvs.Quantization.F32)
     
+    # Priority for dist_mode: 1. CLI Argument, 2. Config File, 3. Default (single)
+    mode_str = args.mode or config.get('mode', 'single')
+    dist_mode = mode_mapping.get(mode_str.lower(), cuvs.DistributionMode.SINGLE_GPU)
+    
+    # Priority for devices: 1. CLI Argument, 2. Config File, 3. Default ([0])
+    if args.devices:
+        devices = [int(d) for d in args.devices.split(',')]
+    elif 'devices' in config:
+        devices = config['devices']
+    else:
+        devices = [0]
+    
     # Clean up idx_cfg if it was just a string in config
     if isinstance(idx_cfg, str):
         idx_cfg = {}
@@ -98,7 +117,8 @@ def run_cuvs_benchmark(args):
         dist_type_str = config['index'].get('op_type', dist_type_str)
     
     metric = dist_mapping.get(dist_type_str, cuvs.DistanceType.L2Expanded)
-    print(f"Index type: {idx_type}, Metric: {metric.name}, Quantization: {qtype.name}, Dataset size: {dataset_size}")
+    print(f"Index type: {idx_type}, Metric: {metric.name}, Quantization: {qtype.name}")
+    print(f"Mode: {dist_mode.name}, Devices: {devices}, Dataset size: {dataset_size}")
 
     # 2. Create Empty Index
     index = None
@@ -106,19 +126,19 @@ def run_cuvs_benchmark(args):
         build_params = cuvs.CagraBuildParams.default()
         if 'graph_degree' in idx_cfg: build_params.graph_degree = idx_cfg['graph_degree']
         if 'intermediate_graph_degree' in idx_cfg: build_params.intermediate_graph_degree = idx_cfg['intermediate_graph_degree']
-        index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype)
+        index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype, dist_mode=dist_mode, devices=devices)
     elif idx_type == 'ivfflat':
         build_params = cuvs.IvfFlatBuildParams.default()
         if 'n_lists' in idx_cfg: build_params.n_lists = idx_cfg['n_lists']
-        index = cuvs.IvfFlatIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype)
+        index = cuvs.IvfFlatIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype, dist_mode=dist_mode, devices=devices)
     elif idx_type == 'ivfpq':
         build_params = cuvs.IvfPqBuildParams.default()
         if 'n_lists' in idx_cfg: build_params.n_lists = idx_cfg['n_lists']
         if 'm' in idx_cfg: build_params.m = idx_cfg['m']
-        index = cuvs.IvfPqIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype)
+        index = cuvs.IvfPqIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype, dist_mode=dist_mode, devices=devices)
     else:
         print(f"Unsupported index type for chunked addition: {idx_type}. Defaulting to CAGRA.")
-        index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric, qtype=qtype)
+        index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric, qtype=qtype, dist_mode=dist_mode, devices=devices)
 
     index.start()
 
@@ -284,6 +304,8 @@ def main():
     parser.add_argument("-f", "--config", required=True, help="Path to config file")
     parser.add_argument("--index-type", choices=['cagra', 'ivfflat', 'ivfpq'], help="Index type (overrides config)")
     parser.add_argument("--qtype", choices=['fp32', 'fp16', 'int8', 'uint8'], help="Quantization type (overrides config)")
+    parser.add_argument("--mode", choices=['single', 'sharded', 'replicated'], help="Distribution mode (overrides config)")
+    parser.add_argument("--devices", help="Comma-separated list of GPU device IDs (e.g., '0,1')")
     parser.add_argument("--input-dir", help="Directory to load index from")
     parser.add_argument("--output-dir", help="Directory to save index to")
     parser.add_argument("-n", "--number", type=int, help="Total number of vectors to add")
