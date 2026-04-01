@@ -26,6 +26,17 @@ dist_mapping = {
     'vector_ip_ops': cuvs.DistanceType.InnerProduct,
 }
 
+# Mapping string quantization types to cuvs.Quantization
+qtype_mapping = {
+    'fp32': cuvs.Quantization.F32,
+    'float32': cuvs.Quantization.F32,
+    'fp16': cuvs.Quantization.F16,
+    'float16': cuvs.Quantization.F16,
+    'half': cuvs.Quantization.F16,
+    'int8': cuvs.Quantization.INT8,
+    'uint8': cuvs.Quantization.UINT8,
+}
+
 def parse_vector(v_str):
     if isinstance(v_str, str):
         try:
@@ -74,6 +85,10 @@ def run_cuvs_benchmark(args):
     else:
         idx_type = idx_cfg.get('type', 'cagra')
     
+    # Priority for qtype: 1. CLI Argument, 2. Config File, 3. Default (fp32)
+    qtype_str = args.qtype or config.get('qtype', 'fp32')
+    qtype = qtype_mapping.get(qtype_str.lower(), cuvs.Quantization.F32)
+    
     # Clean up idx_cfg if it was just a string in config
     if isinstance(idx_cfg, str):
         idx_cfg = {}
@@ -83,7 +98,7 @@ def run_cuvs_benchmark(args):
         dist_type_str = config['index'].get('op_type', dist_type_str)
     
     metric = dist_mapping.get(dist_type_str, cuvs.DistanceType.L2Expanded)
-    print(f"Index type: {idx_type}, Metric: {metric.name}, Dataset size: {dataset_size}")
+    print(f"Index type: {idx_type}, Metric: {metric.name}, Quantization: {qtype.name}, Dataset size: {dataset_size}")
 
     # 2. Create Empty Index
     index = None
@@ -91,19 +106,19 @@ def run_cuvs_benchmark(args):
         build_params = cuvs.CagraBuildParams.default()
         if 'graph_degree' in idx_cfg: build_params.graph_degree = idx_cfg['graph_degree']
         if 'intermediate_graph_degree' in idx_cfg: build_params.intermediate_graph_degree = idx_cfg['intermediate_graph_degree']
-        index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params)
+        index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype)
     elif idx_type == 'ivfflat':
         build_params = cuvs.IvfFlatBuildParams.default()
         if 'n_lists' in idx_cfg: build_params.n_lists = idx_cfg['n_lists']
-        index = cuvs.IvfFlatIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params)
+        index = cuvs.IvfFlatIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype)
     elif idx_type == 'ivfpq':
         build_params = cuvs.IvfPqBuildParams.default()
         if 'n_lists' in idx_cfg: build_params.n_lists = idx_cfg['n_lists']
         if 'm' in idx_cfg: build_params.m = idx_cfg['m']
-        index = cuvs.IvfPqIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params)
+        index = cuvs.IvfPqIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype)
     else:
         print(f"Unsupported index type for chunked addition: {idx_type}. Defaulting to CAGRA.")
-        index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric)
+        index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric, qtype=qtype)
 
     index.start()
 
@@ -250,6 +265,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run cuVS benchmark with chunked addition and parallel search")
     parser.add_argument("-f", "--config", required=True, help="Path to config file")
     parser.add_argument("--index-type", choices=['cagra', 'ivfflat', 'ivfpq'], help="Index type (overrides config)")
+    parser.add_argument("--qtype", choices=['fp32', 'fp16', 'int8', 'uint8'], help="Quantization type (overrides config)")
     parser.add_argument("-n", "--number", type=int, help="Total number of vectors to add")
     parser.add_argument("-nq", "--number-queries", type=int, default=100, help="Number of queries for recall test")
     parser.add_argument("-k", type=int, default=1, help="K for search")
