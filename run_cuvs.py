@@ -6,6 +6,7 @@ import time
 import numpy as np
 import pandas as pd
 import ast
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Add path to cuvs python api
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'matrixone', 'cgo', 'cuvs', 'python')))
@@ -20,7 +21,7 @@ from gen import Generator
 # Mapping matrixone op_type to cuvs DistanceType
 dist_mapping = {
     'vector_l2_ops': cuvs.DistanceType.L2Expanded,
-    'vector_l2sq_ops': cuvs.DistanceType.L2Unexpanded, # L2Sq is often unexpanded in cuvs context if not sqrted
+    'vector_l2sq_ops': cuvs.DistanceType.L2Unexpanded, 
     'vector_cosine_ops': cuvs.DistanceType.CosineExpanded,
     'vector_ip_ops': cuvs.DistanceType.InnerProduct,
 }
@@ -30,10 +31,28 @@ def parse_vector(v_str):
         try:
             return np.array(ast.literal_eval(v_str), dtype=np.float32)
         except (ValueError, SyntaxError):
-            # Try splitting by comma if literal_eval fails (for very simple comma-separated strings)
             v_str = v_str.strip('[]')
             return np.fromstring(v_str, sep=',', dtype=np.float32)
     return v_str
+
+def cuvs_search_worker(index, query_vectors, query_ids, k, search_params):
+    """
+    Worker function to run search queries in a thread.
+    Following the pattern of recall.py's search_worker.
+    """
+    start_time = time.monotonic()
+    neighbors, distances = index.search(query_vectors, k, search_params=search_params)
+    end_time = time.monotonic()
+    
+    correct = 0
+    total = len(query_vectors)
+    for i in range(total):
+        # Recall@1: Check if the correct ID is in the first result
+        # Note: neighbors return might be uint32 or int64 depending on index type
+        if query_ids[i] in neighbors[i][:1]: 
+            correct += 1
+            
+    return correct, total, end_time - start_time
 
 def run_cuvs_benchmark(args):
     with open(args.config, 'r') as f:
@@ -46,11 +65,18 @@ def run_cuvs_benchmark(args):
     
     # 1. Setup Index Parameters
     idx_cfg = config.get('index', {})
-    if isinstance(idx_cfg, str):
+    
+    # Priority: 1. CLI Argument, 2. Config File, 3. Default (cagra)
+    if args.index_type:
+        idx_type = args.index_type
+    elif isinstance(idx_cfg, str):
         idx_type = idx_cfg
-        idx_cfg = {}
     else:
-        idx_type = idx_cfg.get('type', args.index_type)
+        idx_type = idx_cfg.get('type', 'cagra')
+    
+    # Clean up idx_cfg if it was just a string in config
+    if isinstance(idx_cfg, str):
+        idx_cfg = {}
     
     dist_type_str = config.get('distance', 'vector_l2_ops')
     if isinstance(config.get('index'), dict):
@@ -71,10 +97,10 @@ def run_cuvs_benchmark(args):
         if 'n_lists' in idx_cfg: build_params.n_lists = idx_cfg['n_lists']
         index = cuvs.IvfFlatIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params)
     elif idx_type == 'ivfpq':
-        # IVF-PQ might not support add_chunk in this version of the library
-        # If it doesn't, we'll have to load all data at once.
-        print("Warning: IVF-PQ may not support chunked addition. Attempting to load all data.")
-        chunk_size = dataset_size 
+        build_params = cuvs.IvfPqBuildParams.default()
+        if 'n_lists' in idx_cfg: build_params.n_lists = idx_cfg['n_lists']
+        if 'm' in idx_cfg: build_params.m = idx_cfg['m']
+        index = cuvs.IvfPqIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params)
     else:
         print(f"Unsupported index type for chunked addition: {idx_type}. Defaulting to CAGRA.")
         index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric)
@@ -93,10 +119,7 @@ def run_cuvs_benchmark(args):
         except FileNotFoundError:
             pass
     
-    start_time = time.monotonic()
     added_count = 0
-    
-    # We'll save a few queries for recall test
     query_vectors = []
     query_ids = []
     max_queries = args.number_queries
@@ -106,7 +129,6 @@ def run_cuvs_benchmark(args):
         for f in csv_files:
             if added_count >= dataset_size:
                 break
-            # Use pandas chunking
             for df_chunk in pd.read_csv(f, chunksize=chunk_size):
                 if added_count >= dataset_size:
                     break
@@ -115,17 +137,17 @@ def run_cuvs_benchmark(args):
                     df_chunk = df_chunk.head(needed)
                 
                 vecs = np.array([parse_vector(v) for v in df_chunk['vector'].values], dtype=np.float32)
-                # ids = df_chunk['id'].values.astype(np.uint32) # cuvs add_chunk usually doesn't take IDs, it appends
                 
-                # Save some queries
+                # Save some queries for recall test
                 if len(query_vectors) < max_queries:
                     take = min(max_queries - len(query_vectors), len(vecs))
                     query_vectors.append(vecs[:take])
-                    query_ids.append(df_chunk['id'].values[:take])
+                    query_ids.append(df_chunk['id'].values[:take].astype(np.uint32))
 
                 index.add_chunk(vecs)
                 added_count += len(vecs)
-                print(f"Added {added_count}/{dataset_size} vectors...")
+                if added_count % 50000 == 0 or added_count == dataset_size:
+                    print(f"Added {added_count}/{dataset_size} vectors...")
     else:
         print(f"Generating and adding synthetic data in chunks of {chunk_size}...")
         gen = Generator(config, seed=args.seed)
@@ -134,24 +156,16 @@ def run_cuvs_benchmark(args):
             batch = gen.gen_batch(current_batch_size, added_count)
             vecs = np.array([parse_vector(row['vector']) for row in batch], dtype=np.float32)
             
-            # Save some queries
+            # Save some queries for recall test
             if len(query_vectors) < max_queries:
                 take = min(max_queries - len(query_vectors), len(vecs))
                 query_vectors.append(vecs[:take])
-                query_ids.append(np.array([row['id'] for row in batch[:take]]))
+                query_ids.append(np.array([row['id'] for row in batch[:take]], dtype=np.uint32))
 
             index.add_chunk(vecs)
             added_count += len(vecs)
-            if added_count % 10000 == 0 or added_count == dataset_size:
+            if added_count % 50000 == 0 or added_count == dataset_size:
                 print(f"Added {added_count}/{dataset_size} vectors...")
-
-    # For IVF-PQ which we couldn't create empty (hypothetically)
-    if index is None and idx_type == 'ivfpq':
-         # Load all at once as a fallback for IVF-PQ
-         print("Loading all data at once for IVF-PQ...")
-         # (This part would be similar to the previous version's load_dataset but with OOM risk)
-         # For brevity, I'll assume CAGRA/IVF-Flat are the primary targets for this request.
-         pass
 
     # 4. Build Index
     print("Building index...")
@@ -160,7 +174,7 @@ def run_cuvs_benchmark(args):
     build_end = time.monotonic()
     print(f"Index build took {build_end - build_start:.4f} s")
 
-    # 5. Recall Test
+    # 5. Parallel Recall Test using ThreadPoolExecutor
     if not query_vectors:
         print("Error: No queries collected for recall test.")
         return
@@ -169,9 +183,9 @@ def run_cuvs_benchmark(args):
     query_ids = np.concatenate(query_ids)
     
     n_queries = len(query_vectors)
-    print(f"Running search for {n_queries} queries...")
-    
     k = args.k
+    threads = args.threads
+    
     search_params = None
     if idx_type == 'cagra':
         search_params = cuvs.CagraSearchParams.default()
@@ -180,43 +194,66 @@ def run_cuvs_benchmark(args):
     elif idx_type == 'ivfflat':
         search_params = cuvs.IvfFlatSearchParams.default()
         if 'n_probes' in idx_cfg: search_params.n_probes = idx_cfg['n_probes']
+    elif idx_type == 'ivfpq':
+        search_params = cuvs.IvfPqSearchParams.default()
+        if 'n_probes' in idx_cfg: search_params.n_probes = idx_cfg['n_probes']
 
-    # Warm-up
+    print(f"Running parallel search for {n_queries} queries with {threads} threads...")
+
+    # Split queries among threads
+    queries_per_thread = n_queries // threads
+    remainder = n_queries % threads
+    
+    search_args = []
+    start_idx = 0
+    for i in range(threads):
+        count = queries_per_thread + (1 if i < remainder else 0)
+        if count > 0:
+            sub_vectors = query_vectors[start_idx : start_idx + count]
+            sub_ids = query_ids[start_idx : start_idx + count]
+            search_args.append((index, sub_vectors, sub_ids, k, search_params))
+            start_idx += count
+    
+    # Warm-up (serial)
     index.search(query_vectors[:min(10, n_queries)], k, search_params=search_params)
 
-    start_search = time.monotonic()
-    neighbors, distances = index.search(query_vectors, k, search_params=search_params)
-    end_search = time.monotonic()
+    total_correct = 0
+    total_queries = 0
+    total_worker_time = 0
     
-    search_time = end_search - start_search
-    qps = n_queries / search_time if search_time > 0 else 0
-    avg_latency = (search_time / n_queries) * 1000 if n_queries > 0 else 0
-
-    # Calculate Recall@1
-    correct = 0
-    for i in range(n_queries):
-        # Note: neighbors return might be uint32 or int64 depending on index type
-        if query_ids[i] in neighbors[i][:1]: 
-            correct += 1
+    batch_start = time.monotonic()
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = [executor.submit(cuvs_search_worker, *args) for args in search_args]
+        for f in as_completed(futures):
+            c, t, elapsed = f.result()
+            total_correct += c
+            total_queries += t
+            total_worker_time += elapsed
+    batch_end = time.monotonic()
     
-    recall_at_1 = correct / n_queries if n_queries > 0 else 0
+    total_search_wall_time = batch_end - batch_start
+    qps = total_queries / total_search_wall_time if total_search_wall_time > 0 else 0
+    avg_latency = (total_worker_time / total_queries) * 1000 if total_queries > 0 else 0
+    recall_at_1 = total_correct / total_queries if total_queries > 0 else 0
 
     print("-" * 40)
     print(f"Index Type: {idx_type}")
     print(f"Dataset Size: {added_count}")
-    print(f"Queries: {n_queries}")
+    print(f"Threads: {threads}")
+    print(f"Queries: {total_queries}")
     print(f"Recall@1: {recall_at_1:.4f}")
-    print(f"QPS: {qps:.2f}")
-    print(f"Avg Latency: {avg_latency:.4f} ms")
+    print(f"QPS (Wall time): {qps:.2f}")
+    print(f"Avg Latency (Worker time): {avg_latency:.4f} ms")
     print("-" * 40)
 
 def main():
-    parser = argparse.ArgumentParser(description="Run cuVS benchmark with chunked addition")
+    parser = argparse.ArgumentParser(description="Run cuVS benchmark with chunked addition and parallel search")
     parser.add_argument("-f", "--config", required=True, help="Path to config file")
-    parser.add_argument("--index-type", choices=['cagra', 'ivfflat', 'ivfpq'], default='cagra', help="Index type")
+    parser.add_argument("--index-type", choices=['cagra', 'ivfflat', 'ivfpq'], help="Index type (overrides config)")
     parser.add_argument("-n", "--number", type=int, help="Total number of vectors to add")
     parser.add_argument("-nq", "--number-queries", type=int, default=100, help="Number of queries for recall test")
     parser.add_argument("-k", type=int, default=1, help="K for search")
+    parser.add_argument("-t", "--threads", type=int, default=1, help="Number of threads for parallel search")
     parser.add_argument("-s", "--seed", type=int, default=8888, help="Random seed")
     parser.add_argument("--input-csv", action="append", help="Input CSV file(s)")
     parser.add_argument("--prefix", help="Input file prefix")
