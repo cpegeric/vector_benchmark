@@ -291,6 +291,107 @@ def generate_csv(config, output_file=None, output_prefix=None, seed=DEFAULT_SEED
         print(f"Finished generating {total_size} rows.")
         return [output_file]
 
+def fbin_read(filename):
+    """Read a binary vector file in the cuvs benchmark format.
+
+    Supported suffixes and their dtypes:
+      .fbin   -> float32
+      .f16bin -> float16
+      .ibin   -> int32
+      .u8bin  -> uint8
+      .i8bin  -> int8
+
+    Format: first 8 bytes are num_vectors (uint32) and num_dimensions (uint32),
+    followed by num_vectors * num_dimensions * sizeof(type) bytes in row-major order.
+    """
+    suffix_to_dtype = {
+        '.fbin':   np.float32,
+        '.f16bin': np.float16,
+        '.ibin':   np.int32,
+        '.u8bin':  np.uint8,
+        '.i8bin':  np.int8,
+    }
+    # Match the suffix
+    fname_lower = filename.lower()
+    dtype = None
+    for suffix, dt in suffix_to_dtype.items():
+        if fname_lower.endswith(suffix):
+            dtype = dt
+            break
+    if dtype is None:
+        raise ValueError(f"Unrecognized fbin file suffix for '{filename}'. "
+                         f"Expected one of: {list(suffix_to_dtype.keys())}")
+
+    with open(filename, 'rb') as f:
+        header = np.frombuffer(f.read(8), dtype=np.uint32)
+        num_vectors, num_dimensions = int(header[0]), int(header[1])
+        data = np.frombuffer(f.read(), dtype=dtype)
+
+    assert data.size == num_vectors * num_dimensions, (
+        f"Expected {num_vectors * num_dimensions} elements, got {data.size}"
+    )
+    return data.reshape(num_vectors, num_dimensions)
+
+
+def convert_fbin_to_csv(fbin_path, output_file, seed=DEFAULT_SEED, start_id=0, batch_size=1000, compress_level=6):
+    print(f"Reading vectors from {fbin_path}...")
+    vectors = fbin_read(fbin_path)
+    # Cast to float32 for consistent CSV output
+    vectors = vectors.astype(np.float32)
+    total_size = len(vectors)
+    print(f"Found {total_size} vectors with dimension {vectors.shape[1]}. Converting to CSV at {output_file}...")
+
+    output_dir = os.path.dirname(output_file)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"Created output directory: {output_dir}")
+
+    rss = [
+        None,
+        np.random.RandomState(seed + 1),  # i32v
+        np.random.RandomState(seed + 2),  # f32v
+        np.random.RandomState(seed + 3),  # str
+    ]
+    str_choices = list(string.ascii_letters + string.digits)
+
+    if output_file.endswith('.gz'):
+        csv_fp = gzip.open(output_file, 'wt', newline='', compresslevel=compress_level)
+    else:
+        csv_fp = open(output_file, 'w', newline='')
+
+    with csv_fp as csvfile:
+        fieldnames = ['id', 'vector', 'i32v', 'f32v', 'str']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, restval='')
+        writer.writeheader()
+
+        for i in range(0, total_size, batch_size):
+            batch_end = min(i + batch_size, total_size)
+            batch_vectors = vectors[i:batch_end]
+            current_batch_size = len(batch_vectors)
+
+            i32vs = rss[1].randint(0, 1000, current_batch_size, dtype=np.int32)
+            f32vs = rss[2].rand(current_batch_size).astype(np.float32)
+
+            rows = []
+            for j in range(current_batch_size):
+                vec_str = '[' + ','.join(map(str, batch_vectors[j])) + ']'
+                s_len = rss[3].randint(5, 10)
+                s_val = ''.join(rss[3].choice(str_choices, s_len))
+                rows.append({
+                    'id': start_id + i + j,
+                    'vector': vec_str,
+                    'i32v': int(i32vs[j]),
+                    'f32v': float(f32vs[j]),
+                    'str': s_val,
+                })
+
+            writer.writerows(rows)
+            if (i + current_batch_size) % 10000 == 0 or (i + current_batch_size) == total_size:
+                print(f"{i + current_batch_size} rows written...")
+
+    print(f"Finished converting {total_size} vectors to CSV.")
+
+
 def fvecs_read(filename, c_contiguous=True):
     fv = np.fromfile(filename, dtype=np.float32)
     if fv.size == 0:
@@ -375,6 +476,7 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="Random seed")
     parser.add_argument("--start-id", type=int, default=0, help="Starting ID for the dataset")
     parser.add_argument("--fvecs", help="Path to .fvecs file to convert to CSV")
+    parser.add_argument("--fbin", help="Path to binary vector file (.fbin/.f16bin/.ibin/.u8bin/.i8bin) to convert to CSV")
     
     args = parser.parse_args()
 
@@ -382,6 +484,16 @@ if __name__ == "__main__":
         print("Error: --output and --prefix are mutually exclusive.", file=sys.stderr)
         sys.exit(1)
     
+    if args.fbin:
+        if args.prefix:
+            print("Error: --prefix is not supported with --fbin conversion.", file=sys.stderr)
+            raise ValueError("--prefix is not supported with --fbin conversion.")
+        if not args.output:
+            print("Error: --output is required when using --fbin", file=sys.stderr)
+            raise ValueError("--output is required when using --fbin")
+        convert_fbin_to_csv(args.fbin, args.output, args.seed, args.start_id, compress_level=args.compress_level)
+        sys.exit(0)
+
     if args.fvecs:
         if args.prefix:
             print("Error: --prefix is not supported with --fvecs conversion.", file=sys.stderr)
