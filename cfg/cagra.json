@@ -1,0 +1,21 @@
+{
+  "host": "localhost",
+  "port": 6001,
+  "user": "root",
+  "password": "111",
+  "database": "mydb",
+  "table": "cagra_tbl",
+  "index": {
+    "name": "cagraidx",
+    "type": "cagra",
+    "distribution_mode": "sharded",
+    "quantization": "float32",
+    "intermediate_graph_degree": 128,
+    "graph_degree": 64,
+    "op_type": "vector_l2_ops"
+  },
+  "dimension": 1024,
+  "dataset_size": 10000,
+  "batch_size": 1000,
+  "env": {}
+}

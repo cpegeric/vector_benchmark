@@ -43,9 +43,12 @@ def create_table(cursor, config):
     tbl = config['table']
     dim = config['dimension']
     
+    idx_type = config.get('index', {}).get('type', 'hnsw')
+    id_type = 'INT UNSIGNED' if idx_type == 'cagra' else 'BIGINT'
+    
     sql = f"""
     CREATE TABLE {tbl} (
-        id BIGINT PRIMARY KEY,
+        id {id_type} PRIMARY KEY,
         embed VECF32({dim}),
         i32v INT,
         f32v FLOAT,
@@ -82,7 +85,7 @@ def create_index(cursor, config, async_mode=False):
     lists = index_cfg.get('lists')
     
     # Check if index type is valid
-    if idx_type not in ['hnsw', 'ivfflat']:
+    if idx_type not in ['hnsw', 'ivfflat', 'cagra']:
         print(f"Unknown index type: {idx_type}, defaulting to hnsw")
         idx_type = 'hnsw'
         
@@ -93,7 +96,7 @@ def create_index(cursor, config, async_mode=False):
         CREATE INDEX {idx_name} USING hnsw ON {tbl}(embed) 
         m={m} ef_construction={ef_c} ef_search={ef_s} op_type \"{dist}\" {async_str}
         """
-    else:
+    elif idx_type == 'ivfflat':
         # ivfflat
         if lists is None:
             # Calculate lists based on dataset size logic from indextest.py
@@ -104,6 +107,18 @@ def create_index(cursor, config, async_mode=False):
         sql = f"""
         CREATE INDEX {idx_name} USING ivfflat ON {tbl}(embed) 
         lists={lists} op_type \"{dist}\" {async_str}
+        """
+    elif idx_type == 'cagra':
+        distribution_mode = index_cfg.get('distribution_mode', 'single')
+        quantization = index_cfg.get('quantization', 'float32')
+        intermediate_graph_degree = index_cfg.get('intermediate_graph_degree', 128)
+        graph_degree = index_cfg.get('graph_degree', 64)
+        
+        sql = f"""
+        CREATE INDEX {idx_name} USING cagra ON {tbl}(embed)
+        distribution_mode \"{distribution_mode}\" quantization \"{quantization}\"
+        intermediate_graph_degree={intermediate_graph_degree} graph_degree={graph_degree}
+        op_type \"{dist}\" {async_str}
         """
 
     print(f"Executing: {sql}")
