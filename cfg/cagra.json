@@ -9,7 +9,7 @@
     "name": "cagraidx",
     "type": "cagra",
     "distribution_mode": "single",
-    "quantization": "float32",
+    "quantization": "float16",
     "intermediate_graph_degree": 64,
     "graph_degree": 32,
     "op_type": "vector_l2_ops"
@@ -17,5 +17,11 @@
   "dimension": 1024,
   "dataset_size": 10000,
   "batch_size": 1000,
-  "env": {}
+  "env": {
+    "experimental_cagra_index": 1,
+    "cagra_max_index_capacity": 1000000,
+    "cagra_batch_window": 1000,
+    "cagra_threads_build": 0,
+    "cagra_threads_search": 0,
+  }
 }

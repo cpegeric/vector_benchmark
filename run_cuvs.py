@@ -59,7 +59,10 @@ def cuvs_search_worker(index, query_vectors, query_ids, k, search_params):
     Following the pattern of recall.py's search_worker.
     """
     start_time = time.monotonic()
-    neighbors, distances = index.search(query_vectors, k, search_params=search_params)
+    if search_params is not None:
+        neighbors, distances = index.search(query_vectors, k, search_params=search_params)
+    else:
+        neighbors, distances = index.search(query_vectors, k)
     end_time = time.monotonic()
     
     correct = 0
@@ -136,6 +139,8 @@ def run_cuvs_benchmark(args):
         if 'n_lists' in idx_cfg: build_params.n_lists = idx_cfg['n_lists']
         if 'm' in idx_cfg: build_params.m = idx_cfg['m']
         index = cuvs.IvfPqIndex.create_empty(dataset_size, dim, metric=metric, build_params=build_params, qtype=qtype, dist_mode=dist_mode, devices=devices)
+    elif idx_type == 'bruteforce':
+        index = cuvs.BruteForceIndex.create_empty(dataset_size, dim, metric=metric, device_id=devices[0], qtype=qtype)
     else:
         print(f"Unsupported index type for chunked addition: {idx_type}. Defaulting to CAGRA.")
         index = cuvs.CagraIndex.create_empty(dataset_size, dim, metric=metric, qtype=qtype, dist_mode=dist_mode, devices=devices)
@@ -145,7 +150,10 @@ def run_cuvs_benchmark(args):
     # 3. Load or Build Index
     if args.input_dir:
         print(f"Loading index from {args.input_dir}...")
-        index.load_dir(args.input_dir)
+        if hasattr(index, 'load_dir'):
+            index.load_dir(args.input_dir)
+        else:
+            print(f"Warning: {idx_type} index does not support loading from directory.")
         added_count = dataset_size # Assume it's fully loaded for reporting
     else:
         # Load/Generate Data in Chunks and Add to Index
@@ -220,7 +228,10 @@ def run_cuvs_benchmark(args):
             print(f"Saving index to {args.output_dir}...")
             if not os.path.exists(args.output_dir):
                 os.makedirs(args.output_dir)
-            index.save_dir(args.output_dir)
+            if hasattr(index, 'save_dir'):
+                index.save_dir(args.output_dir)
+            else:
+                print(f"Warning: {idx_type} index does not support saving to directory.")
 
     # 5. Parallel Recall Test using ThreadPoolExecutor
     if args.input_dir:
@@ -268,7 +279,10 @@ def run_cuvs_benchmark(args):
             start_idx += count
     
     # Warm-up (serial)
-    index.search(query_vectors[:min(10, n_queries)], k, search_params=search_params)
+    if search_params is not None:
+        index.search(query_vectors[:min(10, n_queries)], k, search_params=search_params)
+    else:
+        index.search(query_vectors[:min(10, n_queries)], k)
 
     total_correct = 0
     total_queries = 0
@@ -302,7 +316,7 @@ def run_cuvs_benchmark(args):
 def main():
     parser = argparse.ArgumentParser(description="Run cuVS benchmark with chunked addition and parallel search")
     parser.add_argument("-f", "--config", required=True, help="Path to config file")
-    parser.add_argument("--index-type", choices=['cagra', 'ivfflat', 'ivfpq'], help="Index type (overrides config)")
+    parser.add_argument("--index-type", choices=['cagra', 'ivfflat', 'ivfpq', 'bruteforce'], help="Index type (overrides config)")
     parser.add_argument("--qtype", choices=['fp32', 'fp16', 'int8', 'uint8'], help="Quantization type (overrides config)")
     parser.add_argument("--mode", choices=['single', 'sharded', 'replicated'], help="Distribution mode (overrides config)")
     parser.add_argument("--devices", help="Comma-separated list of GPU device IDs (e.g., '0,1')")
