@@ -9,9 +9,9 @@
     "name": "cagraidx",
     "type": "cagra",
     "distribution_mode": "single",
-    "quantization": "float16",
-    "intermediate_graph_degree": 64,
-    "graph_degree": 32,
+    "quantization": "int8",
+    "intermediate_graph_degree": 128,
+    "graph_degree": 64,
     "op_type": "vector_l2_ops"
   },
   "dimension": 1024,
