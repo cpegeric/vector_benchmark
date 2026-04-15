@@ -22,6 +22,6 @@
     "cagra_max_index_capacity": 1000000,
     "cagra_batch_window": 1000,
     "cagra_threads_build": 0,
-    "cagra_threads_search": 0,
+    "cagra_threads_search": 0
   }
 }
