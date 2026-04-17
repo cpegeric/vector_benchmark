@@ -44,7 +44,8 @@ def create_table(cursor, config):
     dim = config['dimension']
     
     idx_type = config.get('index', {}).get('type', 'hnsw')
-    id_type = 'INT UNSIGNED' if idx_type == 'cagra' else 'BIGINT'
+    #id_type = 'INT UNSIGNED' if idx_type == 'cagra' else 'BIGINT'
+    id_type = 'BIGINT'
     
     sql = f"""
     CREATE TABLE {tbl} (

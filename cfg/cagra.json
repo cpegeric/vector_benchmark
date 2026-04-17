@@ -4,18 +4,18 @@
   "user": "root",
   "password": "111",
   "database": "mydb",
-  "table": "cagra_tbl",
+  "table": "cagra_1m_tbl_single",
   "index": {
     "name": "cagraidx",
     "type": "cagra",
     "distribution_mode": "single",
-    "quantization": "int8",
-    "intermediate_graph_degree": 128,
+    "quantization": "float16",
+    "intermediate_graph_degree": 256,
     "graph_degree": 64,
     "op_type": "vector_l2_ops"
   },
-  "dimension": 1024,
-  "dataset_size": 10000,
+  "dimension": 768,
+  "dataset_size": 1000000,
   "batch_size": 1000,
   "env": {
     "experimental_cagra_index": 1,
