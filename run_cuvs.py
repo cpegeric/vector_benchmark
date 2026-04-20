@@ -186,14 +186,15 @@ def run_cuvs_benchmark(args):
                         df_chunk = df_chunk.head(needed)
                     
                     vecs = np.array([parse_vector(v) for v in df_chunk['vector'].values], dtype=np.float32)
+                    ids = df_chunk['id'].values.astype(np.int64)
                     
                     # Save some queries for recall test
                     if len(query_vectors) < max_queries:
                         take = min(max_queries - len(query_vectors), len(vecs))
                         query_vectors.append(vecs[:take])
-                        query_ids.append(df_chunk['id'].values[:take].astype(np.uint32))
+                        query_ids.append(ids[:take])
 
-                    index.add_chunk(vecs)
+                    index.add_chunk(vecs, ids=ids)
                     added_count += len(vecs)
                     if added_count % 50000 == 0 or added_count == dataset_size:
                         print(f"Added {added_count}/{dataset_size} vectors...")
@@ -204,14 +205,15 @@ def run_cuvs_benchmark(args):
                 current_batch_size = min(chunk_size, dataset_size - added_count)
                 batch = gen.gen_batch(current_batch_size, added_count)
                 vecs = np.array([parse_vector(row['vector']) for row in batch], dtype=np.float32)
+                ids = np.array([row['id'] for row in batch], dtype=np.int64)
                 
                 # Save some queries for recall test
                 if len(query_vectors) < max_queries:
                     take = min(max_queries - len(query_vectors), len(vecs))
                     query_vectors.append(vecs[:take])
-                    query_ids.append(np.array([row['id'] for row in batch[:take]], dtype=np.uint32))
+                    query_ids.append(ids[:take])
 
-                index.add_chunk(vecs)
+                index.add_chunk(vecs, ids=ids)
                 added_count += len(vecs)
                 if added_count % 50000 == 0 or added_count == dataset_size:
                     print(f"Added {added_count}/{dataset_size} vectors...")

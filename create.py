@@ -130,11 +130,13 @@ def create_index(cursor, config, async_mode=False):
         bits_per_code = index_cfg.get('bits_per_code', 8)
         m = index_cfg.get('m', 4)
         quantization = index_cfg.get('quantization', 'INT8')
+        distribution_mode = index_cfg.get('distribution_mode', 'single')
 
         sql = f"""
         CREATE INDEX {idx_name} USING ivfpq ON {tbl}(embed)
         LISTS {lists} BITS_PER_CODE {bits_per_code} M {m}
-        OP_TYPE '{dist}' QUANTIZATION '{quantization}' {async_str}
+        OP_TYPE '{dist}' QUANTIZATION '{quantization}'
+        DISTRIBUTION_MODE '{distribution_mode}' {async_str}
         """
 
     print(f"Executing: {sql}")

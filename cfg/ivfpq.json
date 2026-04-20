@@ -8,16 +8,17 @@
   "index": {
     "name": "ivfpqidx",
     "type": "ivfpq",
-    "lists": 1000,
+    "lists": 1024,
     "bits_per_code": 8,
-    "m": 4,
-    "quantization": "float16",
-    "op_type": "vector_l2_ops"
+    "m": 384,
+    "quantization": "float32",
+    "op_type": "vector_l2_ops",
+    "distribution_mode" : "single"
   },
   "dimension": 768,
   "dataset_size": 1000000,
   "batch_size": 1000,
   "env": {
-    "probe_limit": 3
+    "probe_limit": 64
   }
 }
