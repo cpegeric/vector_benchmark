@@ -4,24 +4,24 @@
   "user": "root",
   "password": "111",
   "database": "mydb",
-  "table": "ivfpq_tbl",
+  "table": "ivfpq_10m_tbl",
   "index": {
-    "name": "ivfpqidx",
+    "name": "ivfpqidx_10m",
     "type": "ivfpq",
-    "lists": 1024,
+    "lists": 4096,
     "bits_per_code": 8,
     "m": 384,
-    "quantization": "float32",
+    "quantization": "float16",
     "op_type": "vector_l2_ops",
-    "distribution_mode" : "single"
+    "distribution_mode" : "sharded"
   },
   "dimension": 768,
-  "dataset_size": 1000000,
+  "dataset_size": 10000000,
   "batch_size": 1000,
   "env": {
-    "probe_limit": 64,
-    "ivfpq_max_index_capacity": 1000000,
+    "probe_limit": 128,
+    "ivfpq_max_index_capacity": 10000000,
     "ivfpq_batch_window": 1000,
-    "kmeans_train_percent": 10
+    "kmeans_train_percent": 20
   }
 }
