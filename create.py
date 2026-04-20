@@ -86,7 +86,7 @@ def create_index(cursor, config, async_mode=False):
     lists = index_cfg.get('lists')
     
     # Check if index type is valid
-    if idx_type not in ['hnsw', 'ivfflat', 'cagra']:
+    if idx_type not in ['hnsw', 'ivfflat', 'cagra', 'ivfpq']:
         print(f"Unknown index type: {idx_type}, defaulting to hnsw")
         idx_type = 'hnsw'
         
@@ -114,12 +114,27 @@ def create_index(cursor, config, async_mode=False):
         quantization = index_cfg.get('quantization', 'float32')
         intermediate_graph_degree = index_cfg.get('intermediate_graph_degree', 128)
         graph_degree = index_cfg.get('graph_degree', 64)
+        itopk_size = index_cfg.get('itopk_size', 64)
         
         sql = f"""
         CREATE INDEX {idx_name} USING cagra ON {tbl}(embed)
         distribution_mode \"{distribution_mode}\" quantization \"{quantization}\"
         intermediate_graph_degree={intermediate_graph_degree} graph_degree={graph_degree}
-        op_type \"{dist}\" {async_str}
+        itopk_size={itopk_size} op_type \"{dist}\" {async_str}
+        """
+    elif idx_type == 'ivfpq':
+        if lists is None:
+            nitem = config['dataset_size']
+            lists = int(nitem / 1000) if nitem < 1000000 else int(np.sqrt(nitem))
+            if lists < 10: lists = 10
+        bits_per_code = index_cfg.get('bits_per_code', 8)
+        m = index_cfg.get('m', 4)
+        quantization = index_cfg.get('quantization', 'INT8')
+
+        sql = f"""
+        CREATE INDEX {idx_name} USING ivfpq ON {tbl}(embed)
+        LISTS {lists} BITS_PER_CODE {bits_per_code} M {m}
+        OP_TYPE '{dist}' QUANTIZATION '{quantization}' {async_str}
         """
 
     print(f"Executing: {sql}")

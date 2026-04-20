@@ -1,0 +1,23 @@
+{
+  "host": "localhost",
+  "port": 6001,
+  "user": "root",
+  "password": "111",
+  "database": "mydb",
+  "table": "ivfpq_tbl",
+  "index": {
+    "name": "ivfpqidx",
+    "type": "ivfpq",
+    "lists": 1000,
+    "bits_per_code": 8,
+    "m": 4,
+    "quantization": "float16",
+    "op_type": "vector_l2_ops"
+  },
+  "dimension": 768,
+  "dataset_size": 1000000,
+  "batch_size": 1000,
+  "env": {
+    "probe_limit": 3
+  }
+}
