@@ -10,7 +10,7 @@
     "type": "ivfpq",
     "lists": 4096,
     "bits_per_code": 8,
-    "m": 384,
+    "m": 192,
     "quantization": "float16",
     "op_type": "vector_l2_ops",
     "distribution_mode" : "sharded"

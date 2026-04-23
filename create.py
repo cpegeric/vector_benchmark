@@ -117,7 +117,7 @@ def create_index(cursor, config, async_mode=False):
         itopk_size = index_cfg.get('itopk_size', 64)
         
         sql = f"""
-        CREATE INDEX {idx_name} USING cagra ON {tbl}(embed)
+        CREATE INDEX {idx_name} USING cagra ON {tbl}(embed) INCLUDE (i32v)
         distribution_mode \"{distribution_mode}\" quantization \"{quantization}\"
         intermediate_graph_degree={intermediate_graph_degree} graph_degree={graph_degree}
         itopk_size={itopk_size} op_type \"{dist}\" {async_str}
@@ -133,7 +133,7 @@ def create_index(cursor, config, async_mode=False):
         distribution_mode = index_cfg.get('distribution_mode', 'single')
 
         sql = f"""
-        CREATE INDEX {idx_name} USING ivfpq ON {tbl}(embed)
+        CREATE INDEX {idx_name} USING ivfpq ON {tbl}(embed) INCLUDE (i32v)
         LISTS {lists} BITS_PER_CODE {bits_per_code} M {m}
         OP_TYPE '{dist}' QUANTIZATION '{quantization}'
         DISTRIBUTION_MODE '{distribution_mode}' {async_str}
