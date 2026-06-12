@@ -56,8 +56,11 @@ The `cfg.json` file centralizes all database and benchmark settings.
 }
 ```
 
-- **env**: Session-level SQL variables executed upon connection (`SET key = value`).
-- **index**: Supports `hnsw` and `ivfflat`. For IVF, use `"lists": N` instead of HNSW parameters.
+- **env**: Session-level SQL variables executed upon connection (`SET key = value`). Index-**build** knobs (`kmeans_train_percent`, `*_max_index_capacity`) no longer live here — they belong in the `index` block and are emitted as `CREATE INDEX` options (a CREATE INDEX param takes precedence over the session var in MO). `env` keeps only true session switches (`probe_limit`, `experimental_*_index`, `*_batch_window`).
+- **index**: Supports `hnsw` / `ivfflat` / `cagra` / `ivfpq`. For IVF, use `"lists": N` instead of HNSW parameters. Build params emitted into the `CREATE INDEX` SQL:
+  - `quantization` — **ivfflat now supports** `float32` (no compression, default) / `float16` / `bf16` / `int8` / `uint8`. Entries are stored in that narrow type (centroids stay f32); `int8`/`uint8` use the trained scalar quantizer.
+  - `kmeans_train_percent` / `kmeans_max_iteration` (ivfflat / ivfpq) — only emitted when `> 0`.
+  - `max_index_capacity` (cagra / ivfpq) — `0` means the server auto-sizes to the row count (omitted from SQL); ivfflat does not support it.
 
 ---
 

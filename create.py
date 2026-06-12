@@ -73,6 +73,16 @@ def drop_index(cursor, config):
     print(f"Executing: {sql}")
     cursor.execute(sql)
 
+def _first(index_cfg, *keys):
+    """Return the first present (non-None) value among keys, else None.
+    Supports prefixed keys (cagra_max_index_capacity / ivfpq_max_index_capacity)."""
+    for k in keys:
+        v = index_cfg.get(k)
+        if v is not None:
+            return v
+    return None
+
+
 def create_index(cursor, config, async_mode=False):
     tbl = config['table']
     index_cfg = config.get('index', {})
@@ -105,9 +115,21 @@ def create_index(cursor, config, async_mode=False):
             lists = int(nitem / 1000) if nitem < 1000000 else int(np.sqrt(nitem))
             if lists < 10: lists = 10
         
+        # Build knobs as CREATE INDEX SQL params (were SET as session vars in
+        # cfg.env). quantization: float32/float16/bf16/int8/uint8 — entries are
+        # stored in that narrow type (centroids stay f32); int8/uint8 use the
+        # trained scalar quantizer.
+        opts = ""
+        q = index_cfg.get('quantization')
+        if q:
+            opts += f' quantization \"{q}\"'
+        for key in ('kmeans_train_percent', 'kmeans_max_iteration'):
+            val = index_cfg.get(key)
+            if val:  # 0 / None -> omit; the grammar requires these to be > 0
+                opts += f' {key} {val}'
         sql = f"""
-        CREATE INDEX {idx_name} USING ivfflat ON {tbl}(embed) 
-        lists={lists} op_type \"{dist}\" {async_str}
+        CREATE INDEX {idx_name} USING ivfflat ON {tbl}(embed)
+        lists={lists} op_type \"{dist}\"{opts} {async_str}
         """
     elif idx_type == 'cagra':
         distribution_mode = index_cfg.get('distribution_mode', 'single')
@@ -116,11 +138,13 @@ def create_index(cursor, config, async_mode=False):
         graph_degree = index_cfg.get('graph_degree', 64)
         itopk_size = index_cfg.get('itopk_size', 64)
         
+        mic = _first(index_cfg, 'max_index_capacity', 'cagra_max_index_capacity')
+        cap = f' max_index_capacity {mic}' if mic else ''  # 0 -> server auto
         sql = f"""
         CREATE INDEX {idx_name} USING cagra ON {tbl}(embed)
         distribution_mode \"{distribution_mode}\" quantization \"{quantization}\"
         intermediate_graph_degree={intermediate_graph_degree} graph_degree={graph_degree}
-        itopk_size={itopk_size} op_type \"{dist}\" {async_str}
+        itopk_size={itopk_size} op_type \"{dist}\"{cap} {async_str}
         """
     elif idx_type == 'ivfpq':
         if lists is None:
@@ -131,10 +155,18 @@ def create_index(cursor, config, async_mode=False):
         m = index_cfg.get('m', 4)
         quantization = index_cfg.get('quantization', 'INT8')
 
+        opts = ""
+        for key in ('kmeans_train_percent', 'kmeans_max_iteration'):
+            val = index_cfg.get(key)
+            if val:
+                opts += f' {key} {val}'
+        mic = _first(index_cfg, 'max_index_capacity', 'ivfpq_max_index_capacity')
+        if mic:  # 0 -> server auto-sizes to row count
+            opts += f' max_index_capacity {mic}'
         sql = f"""
         CREATE INDEX {idx_name} USING ivfpq ON {tbl}(embed)
         LISTS {lists} BITS_PER_CODE {bits_per_code} M {m}
-        OP_TYPE '{dist}' QUANTIZATION '{quantization}' {async_str}
+        OP_TYPE '{dist}' QUANTIZATION '{quantization}'{opts} {async_str}
         """
 
     print(f"Executing: {sql}")

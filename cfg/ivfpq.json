@@ -12,7 +12,8 @@
     "bits_per_code": 8,
     "m": 4,
     "quantization": "float16",
-    "op_type": "vector_l2_ops"
+    "op_type": "vector_l2_ops",
+    "max_index_capacity": 0
   },
   "dimension": 768,
   "dataset_size": 1000000,
