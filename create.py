@@ -141,7 +141,7 @@ def create_index(cursor, config, async_mode=False):
         mic = _first(index_cfg, 'max_index_capacity', 'cagra_max_index_capacity')
         cap = f' max_index_capacity {mic}' if mic else ''  # 0 -> server auto
         sql = f"""
-        CREATE INDEX {idx_name} USING cagra ON {tbl}(embed)
+        CREATE INDEX {idx_name} USING cagra ON {tbl}(embed) INCLUDE (i32v)
         distribution_mode \"{distribution_mode}\" quantization \"{quantization}\"
         intermediate_graph_degree={intermediate_graph_degree} graph_degree={graph_degree}
         itopk_size={itopk_size} op_type \"{dist}\"{cap} {async_str}
@@ -154,6 +154,7 @@ def create_index(cursor, config, async_mode=False):
         bits_per_code = index_cfg.get('bits_per_code', 8)
         m = index_cfg.get('m', 4)
         quantization = index_cfg.get('quantization', 'INT8')
+        distribution_mode = index_cfg.get('distribution_mode', 'single')
 
         opts = ""
         for key in ('kmeans_train_percent', 'kmeans_max_iteration'):
@@ -164,9 +165,10 @@ def create_index(cursor, config, async_mode=False):
         if mic:  # 0 -> server auto-sizes to row count
             opts += f' max_index_capacity {mic}'
         sql = f"""
-        CREATE INDEX {idx_name} USING ivfpq ON {tbl}(embed)
+        CREATE INDEX {idx_name} USING ivfpq ON {tbl}(embed) INCLUDE (i32v)
         LISTS {lists} BITS_PER_CODE {bits_per_code} M {m}
-        OP_TYPE '{dist}' QUANTIZATION '{quantization}'{opts} {async_str}
+        OP_TYPE '{dist}' QUANTIZATION '{quantization}'
+        DISTRIBUTION_MODE '{distribution_mode}'{opts} {async_str}
         """
 
     print(f"Executing: {sql}")
